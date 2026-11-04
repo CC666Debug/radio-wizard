@@ -90,6 +90,7 @@
   window.AndroidCast = {
     desktop: true,
     httpGet(id, args) { inv('http_get', { args }).then(r => http(id, r), e => http(id, { error: String(e) })); },
+    icy(id, args) { inv('icy', { args }).then(r => http(id, r), e => http(id, { ok: false, error: String(e) })); },
     probe(id, args) { inv('probe', { args }).then(r => http(id, r), e => http(id, { ok: false, error: String(e) })); },
     bandcampLogin() { inv('bandcamp_login'); },
     bandcampLogout() { inv('bandcamp_logout'); },

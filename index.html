@@ -194,6 +194,22 @@
   .trk .d { color: var(--muted); font-size: .8rem; }
   .trk.now { border-color: var(--accent); box-shadow: 0 0 12px var(--glow); }
   .trk.off { opacity: .45; cursor: default; }
+  .subRow { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .subRow .sub { min-width: 0; }
+  .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1rem; padding: 0 4px; flex: none; }
+  .sHeart.on { color: #ff5c9a; }
+  .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .pTrack i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .volRow .iconBtn { font-size: 1.05rem; }
+  #songsList { max-height: 60dvh; overflow: auto; }
+  li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  li.song .sTop { display: flex; align-items: center; gap: 6px; }
+  li.song .sName { flex: 1; font-weight: 600; }
+  li.song .heart { padding: 2px 4px; font-size: 1.05rem; }
+  li.song .sMeta { color: var(--muted); font-size: .78rem; }
+  li.song .sLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
+  li.song .sLinks a { color: var(--accent-2); }
   #diagText { width: 100%; height: 50dvh; background: #0a0814; color: #cfc6ee; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
 </style>
 <!-- Visit counter (GoatCounter: free, no cookies). Diag log has a "Don't count me" switch. -->
@@ -245,7 +261,7 @@
       <img class="art" id="npArt" src="icon-192.png" alt="">
       <div class="np">
         <div class="name" id="npName">Nothing playing</div>
-        <div class="sub" id="npSub">Search for a station and tap it</div>
+        <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button></div>
       </div>
       <button class="heart" id="npHeart" title="Favorite" hidden>♡</button>
       <button class="iconBtn" id="nextBtn" title="Next song" hidden><svg viewBox="0 0 24 24" fill="currentColor" style="width:28px;height:28px"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg></button>
@@ -253,12 +269,15 @@
         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
+    <div class="prog" id="prog" hidden><span id="pT">0:00</span><div class="pTrack"><i id="pFill"></i></div><span id="pD">0:00</span></div>
     <div class="volRow">
       <button class="iconBtn" id="muteBtn" title="Mute">
         <svg viewBox="0 0 24 24" fill="currentColor"><path id="muteIcon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
       </button>
       <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
       <span class="where" id="where">This device</span>
+      <button class="iconBtn" id="songShare" title="Share this song">📤</button>
+      <button class="iconBtn" id="songsBtn" title="Recently played and saved songs">🎵</button>
     </div>
   </div>
 </div>
@@ -267,6 +286,12 @@
   <h3>Directories to search</h3>
   <div id="srcList"></div>
   <div class="row"><button type="button" id="srcAll">All</button><button type="button" class="main" id="srcDone">Done</button></div>
+</dialog>
+
+<dialog id="songsDlg">
+  <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">♥ Saved songs</button></div>
+  <ul class="list" id="songsList"></ul>
+  <div class="row"><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
 </dialog>
 
 <dialog id="bcDlg">
@@ -292,7 +317,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -444,7 +469,12 @@ const SOURCES = [
     id: 'iheart', name: 'iHeartRadio', web: true, about: 'US broadcast stations',
     async search(q) {
       const d = await getJSON('https://api.iheart.com/api/v3/search/all?maxRows=25&bundle=false&station=true&artist=false&track=false&playlist=false&podcast=false&keywords=' + encodeURIComponent(q));
-      return ((d.results && d.results.stations) || []).map(s => ({
+      // iHeart pads its answer with stations that have nothing to do with the search: keep only real matches.
+      const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      return ((d.results && d.results.stations) || []).filter(s => {
+        const hay = (s.name + ' ' + s.description + ' ' + s.genre + ' ' + s.callLetters).toLowerCase();
+        return !words.length || words.every(w => hay.includes(w));
+      }).map(s => ({
         name: s.name, img: s.imageUrl, country: 'US', tags: [s.description, s.genre].filter(Boolean),
         pop: Math.round((s.normRank || 0) * 100), src: { src: 'iheart', rid: String(s.id) },
       }));
@@ -819,6 +849,7 @@ function playStation(st) {
   if (!st) return;
   hideNotice();
   bcStop();
+  songStop();
   choose(st);
   if (castConnected()) { stopHere(); loadOnSpeaker(current); }
   else playHere(current);
@@ -850,7 +881,7 @@ function tryNextHere(tok) {
   here.timer && clearTimeout(here.timer);
   here.timer = setTimeout(() => { if (tok === hereTok && hereState === 'starting') { diag('no sound after 15s'); tryNextHere(tok); } }, 15000);
 }
-audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); renderBar(); setMedia(); });
+audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; bcHeard(); diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); songWatch(here.st, here.links[here.i].url); renderBar(); setMedia(); });
 audio.addEventListener('ended', () => { if (bc && bc.where === 'here') bcNext(); });
 audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); tryNextHere(hereTok); });
 audio.addEventListener('stalled', () => diag('stalled'));
@@ -866,6 +897,7 @@ function rememberWorking(st, link) {
 }
 function stopHere() {
   hereTok++;
+  if (!bc) songStop();
   if (here && here.timer) clearTimeout(here.timer);
   here = null; hereState = 'idle';
   audio.pause(); audio.removeAttribute('src'); audio.load();
@@ -874,7 +906,7 @@ function stopHere() {
 
 // ── Casting (Google Cast) ───────────────────────
 let ctx = null, player = null, ctrl = null;
-let speakerLoading = null, speakerStation = null, speakerRetries = 0, carryOver = null;
+let speakerLoading = null, speakerStation = null, speakerRetries = 0, carryOver = null, songWatchFor = null;
 let castListOpen = false;
 window.__onGCastApiAvailable = function (available) {
   diag('cast library ready: ' + (available && window.cast && cast.framework ? 'yes' : 'NO'));
@@ -902,6 +934,8 @@ window.__onGCastApiAvailable = function (available) {
     }
     if (e.sessionState === S.SESSION_ENDED) {
       if (bc && bc.where === 'speaker') { const c = bc.carry; bc.where = 'here'; bc.carry = null; if (c) bcPlayHere(c.pos); else bc.state = 'paused'; }
+      else if (!carryOver) songStop();
+      songWatchFor = null;
       speakerLoading = speakerStation = null;
       if (carryOver) { const s = carryOver; carryOver = null; playHere(s); }
     }
@@ -971,6 +1005,8 @@ function onSpeakerState() {
   if (player.playerState === PS.PLAYING) {
     if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
     speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0;
+    const sl = speakerLinks && speakerLinks[speakerLinks.i];
+    if (speakerStation && songWatchFor !== speakerStation.key) { songWatchFor = speakerStation.key; songWatch(speakerStation, sl ? sl.url : safeGet('rw_cast')); }
     return;
   }
   if (player.playerState !== PS.IDLE) return;
@@ -1002,7 +1038,7 @@ els.castBtn.addEventListener('click', () => {
 els.playBtn.addEventListener('click', () => {
   if (bc) { bcToggle(); return; }
   if (castConnected()) {
-    if (castActive()) { speakerPaused() ? ctrl.playOrPause() : ctrl.stop(); speakerStation = null; }
+    if (castActive()) { if (speakerPaused()) ctrl.playOrPause(); else { ctrl.stop(); songStop(); songWatchFor = null; } speakerStation = null; }
     else if (current) loadOnSpeaker(current);
   } else if (here) stopHere();
   else if (current) playHere(current);
@@ -1028,11 +1064,17 @@ function renderBar() {
   els.castLabel.textContent = cast ? dev : ctx ? 'Cast' : els.castLabel.textContent;
   els.where.textContent = cast ? 'Speaker' : 'This device';
   $('nextBtn').hidden = !bc;
+  const ns = nowSong();
+  $('songHeart').hidden = !ns;
+  $('songShare').hidden = !ns;
+  if (ns) { const on = isSaved(ns.song); $('songHeart').textContent = on ? '♥' : '♡'; $('songHeart').classList.toggle('on', on); }
+  drawClock();
   if (bc) { bcRenderBar(cast, dev); return; }
   const st = current;
   els.npName.textContent = st ? st.name : 'Nothing playing';
-  els.npArt.src = st && st.img ? st.img : 'icon-192.png';
-  els.npArt.onerror = () => { els.npArt.onerror = null; els.npArt.src = 'icon-192.png'; };
+  const artNow = songArt || (st && st.img) || 'icon-192.png';
+  if (els.npArt.getAttribute('src') !== artNow) els.npArt.src = artNow;
+  els.npArt.onerror = () => { els.npArt.onerror = null; els.npArt.src = st && st.img && songArt ? st.img : 'icon-192.png'; };
   els.npHeart.hidden = !st;
   if (st) { els.npHeart.textContent = isFav(st) ? '♥' : '♡'; els.npHeart.classList.toggle('on', isFav(st)); }
   let sub = 'Search for a station and tap it', live = false, busy = false, playing = false;
@@ -1050,7 +1092,9 @@ function renderBar() {
     else sub = [st.country, st.tags.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Tap play';
     if (document.activeElement !== els.vol) els.vol.value = Math.round(audio.volume * 100);
   }
+  if (song && (live || playing) && !busy) { sub = '♪ ' + song; live = false; }
   els.npSub.textContent = sub;
+  els.npSub.title = song || '';
   els.npSub.classList.toggle('live', live);
   els.npArt.classList.toggle('spin', busy);
   els.playBtn.disabled = !st && !castActive();
@@ -1067,6 +1111,7 @@ function setMedia() {
     return;
   }
   if (!('mediaSession' in navigator) || !current) return;
+  if (song) { navigator.mediaSession.metadata = new MediaMetadata({ title: song, artist: current.name, artwork: [{ src: songArt || current.img || new URL('icon-512.png', location.href).href, sizes: '512x512' }] }); return; }
   navigator.mediaSession.metadata = new MediaMetadata({ title: current.name, artist: 'RadioWizard', artwork: [{ src: current.img || new URL('icon-512.png', location.href).href, sizes: '512x512' }] });
 }
 if ('mediaSession' in navigator) {
@@ -1256,9 +1301,21 @@ async function bcNext() {
   bc.i++;
   bcGo(0);
 }
+function bcHeard() {
+  const t = bcTrack();
+  if (!t || bc.heardUrl === t.url) return;
+  bc.heardUrl = t.url;
+  const name = t.artist + ' – ' + t.title;
+  if (!heard[0] || songKey(heard[0].song) !== songKey(name)) {
+    heard.unshift({ song: name, station: 'Bandcamp · ' + t.album, at: Date.now() });
+    heard = heard.slice(0, 60);
+    safeSet('rw_heard', JSON.stringify(heard));
+  }
+}
 function bcGo(pos) {
   const t = bcTrack();
   if (!t) return;
+  songStop();
   bc.state = 'starting';
   diag('bandcamp ' + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
   if (bc.where === 'speaker' && castConnected()) bcLoadSpeaker(pos);
@@ -1279,6 +1336,7 @@ function bcLoadSpeaker(pos) {
   const t = bcTrack();
   if (!session || !t) return;
   bc.where = 'speaker'; bc.state = 'starting';
+  bcClock.start = 0; bcClock.pos = pos || 0; bcClock.paused = true;
   const info = new chrome.cast.media.MediaInfo(t.url, 'audio/mpeg');
   info.streamType = chrome.cast.media.StreamType.BUFFERED;
   const md = new chrome.cast.media.GenericMediaMetadata();
@@ -1295,8 +1353,8 @@ function bcLoadSpeaker(pos) {
 }
 function bcSpeakerState(media) {
   const PS = chrome.cast.media.PlayerState, IR = chrome.cast.media.IdleReason;
-  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcPrefetch(); return; }
-  if (player.playerState === PS.PAUSED) { bc.state = 'paused'; return; }
+  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
+  if (player.playerState === PS.PAUSED) { bc.state = 'paused'; bcClockPause(); return; }
   if (player.playerState !== PS.IDLE || bc.state === 'starting' && !(media && media.idleReason)) return;
   const why = media && media.idleReason;
   if (why === IR.FINISHED || why === IR.ERROR) bcNext();   // song over (or it couldn't play): on to the next
@@ -1353,6 +1411,214 @@ $('bcForget').addEventListener('click', () => {
   render();
 });
 $('bcDlg').addEventListener('click', e => { if (e.target === $('bcDlg')) $('bcDlg').close(); });
+
+// ── Song info, cover art, time bar, Recently played and Saved songs ─
+// Radio: the song title comes from the station itself. The apps read it straight from the stream ("ICY" titles);
+// laut.fm and SomaFM have their own song lists, and Icecast servers publish theirs (status-json.xsl).
+// Cover art: Apple's free music search. Bandcamp songs already carry their title and cover.
+let song = '', songArt = '', songAt = 0, songEnds = 0, songStarts = 0, songWatchTok = 0, songTimer = null;
+let heard = readJSON('rw_heard', []);     // [{ song, station, at }]
+let saved = readJSON('rw_saved', []);     // [{ song, station, at }]
+const songKey = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+function cleanTitle(t) {
+  t = String(t || '').replace(/\s+/g, ' ').trim();
+  if (!t || t.length < 3 || /^(-|–|unknown|n\/a|null|undefined|live|on air)$/i.test(t)) return '';
+  return t.replace(/\s+-\s+/, ' – ');
+}
+async function songFromLaut(src) {
+  const name = src.url.replace(/^https?:\/\//, '').split('/').pop().split('?')[0];
+  const d = await getJSON('https://api.laut.fm/station/' + encodeURIComponent(name) + '/current_song');
+  if (!d || !d.title) return null;
+  return { title: (d.artist && d.artist.name ? d.artist.name + ' – ' : '') + d.title, starts: Date.parse(d.started_at) || 0, ends: Date.parse(d.ends_at) || 0 };
+}
+async function songFromSoma(src) {
+  const id = (src.url.match(/somafm\.com\/([a-z0-9]+)-/) || [])[1];
+  if (!id) return null;
+  const d = await getJSON('https://api.somafm.com/songs/' + id + '.json');
+  const s = d && d.songs && d.songs[0];
+  return s ? { title: (s.artist ? s.artist + ' – ' : '') + s.title, starts: (+s.date || 0) * 1000 } : null;
+}
+async function songFromIcecast(url) {
+  const u = new URL(url);
+  if (location.protocol === 'https:' && u.protocol === 'http:' && !NATIVE) return null;   // browsers block it
+  const d = await getJSON(u.origin + '/status-json.xsl', { timeout: 6000 });
+  let src = d && d.icestats && d.icestats.source;
+  if (!src) return null;
+  if (!Array.isArray(src)) src = [src];
+  const mine = src.find(x => x.listenurl && new URL(x.listenurl).pathname === u.pathname) || (src.length === 1 ? src[0] : null);
+  if (!mine) return null;
+  const t = mine.title ? (mine.artist ? mine.artist + ' – ' : '') + mine.title : mine.yp_currently_playing;
+  return t ? { title: t } : null;
+}
+async function songFromIcy(url) {
+  if (!NATIVE || !window.AndroidCast.icy) return null;
+  const r = await native('icy', { url, timeout: 9000 });
+  return r && r.ok && r.title ? { title: r.title } : null;
+}
+async function lookUpSong(st, url) {
+  const tries = [];
+  st.srcs.forEach(s => { if (s.src === 'laut' && s.url) tries.push(() => songFromLaut(s)); if (s.src === 'soma' && s.url) tries.push(() => songFromSoma(s)); });
+  if (url) { tries.push(() => songFromIcy(url)); tries.push(() => songFromIcecast(url)); }
+  for (const t of tries) {
+    try { const r = await t(); if (r && cleanTitle(r.title)) return r; } catch (e) {}
+  }
+  return null;
+}
+
+// Watches the station being played (here or on the speaker) and checks its song every 20 seconds.
+let songWatchKey = '';
+function songWatch(st, url) {
+  const key = st && url ? st.key + '|' + url : '';
+  if (key && key === songWatchKey) return;   // already watching this one
+  songWatchKey = key;
+  const tok = ++songWatchTok;
+  clearTimeout(songTimer);
+  if (!st || !url) { setSong('', '', 0, 0); return; }
+  let misses = 0;
+  const check = async () => {
+    if (tok !== songWatchTok) return;
+    const r = await lookUpSong(st, url);
+    if (tok !== songWatchTok) return;
+    if (r) { misses = 0; setSong(cleanTitle(r.title), st.name, r.starts || 0, r.ends || 0); }
+    else if (++misses === 3) diag('no song titles from ' + st.name);
+    // laut.fm says when the song ends: check right after; otherwise every 20 seconds (less if it never answers).
+    const wait = songEnds > Date.now() ? Math.min(songEnds - Date.now() + 1500, 60000) : misses >= 3 ? 60000 : 20000;
+    songTimer = setTimeout(check, wait);
+  };
+  check();
+}
+function songStop() { songWatchKey = ''; songWatchTok++; clearTimeout(songTimer); setSong('', '', 0, 0); }
+
+let artTok = 0;
+function setSong(title, station, starts, ends, art) {
+  if (title === song && !art) { songStarts = starts || songStarts; songEnds = ends || songEnds; return; }
+  song = title; songStarts = starts || (title ? Date.now() : 0); songEnds = ends || 0; songAt = Date.now();
+  songArt = art || '';
+  if (title) {
+    diag('song: ' + title);
+    if (!heard[0] || songKey(heard[0].song) !== songKey(title)) {
+      heard.unshift({ song: title, station, at: Date.now() });
+      heard = heard.slice(0, 60);
+      safeSet('rw_heard', JSON.stringify(heard));
+    }
+    if (!art) findArt(title);
+  }
+  renderBar(); setMedia();
+}
+// Cover art for the song from Apple's music search (free, no key).
+const artCache = new Map();
+async function findArt(title) {
+  const tok = ++artTok;
+  const key = songKey(title);
+  let url = artCache.get(key);
+  if (url === undefined) {
+    url = '';
+    try {
+      const term = title.replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/ – /, ' ').trim();
+      const d = await getJSON('https://itunes.apple.com/search?entity=song&limit=1&term=' + encodeURIComponent(term), { timeout: 8000 });
+      const r = d.results && d.results[0];
+      // Only trust it when the artist matches what the station says.
+      const artist = title.split(' – ')[0].toLowerCase();
+      if (r && r.artworkUrl100 && r.artistName && (artist.includes(r.artistName.toLowerCase()) || r.artistName.toLowerCase().includes(artist))) url = r.artworkUrl100.replace('100x100bb', '600x600bb');
+    } catch (e) {}
+    artCache.set(key, url);
+  }
+  if (tok !== artTok || songKey(song) !== key) return;
+  if (url) { songArt = url; renderBar(); setMedia(); }
+}
+
+// ── The time bar ──
+// Radio: only when the station says how long the song is (laut.fm). Bandcamp: always.
+const pEls = { box: $('prog'), t: $('pT'), d: $('pD'), fill: $('pFill') };
+function songClock() {
+  if (bc && bcTrack()) {
+    const t = bcTrack();
+    let pos = 0;
+    if (bc.where === 'here') pos = audio.currentTime || 0;
+    else if (bcClock.start) pos = bcClock.paused ? bcClock.pos : (performance.now() - bcClock.start) / 1000;
+    return { pos, dur: t.dur || (bc.where === 'here' ? audio.duration : 0) || 0 };
+  }
+  if (song && songEnds > songStarts && songStarts) return { pos: (Date.now() - songStarts) / 1000, dur: (songEnds - songStarts) / 1000 };
+  return null;
+}
+// On the speaker the app keeps its own count of where the song is (started, paused, resumed).
+const bcClock = { start: 0, pos: 0, paused: false };
+function bcClockPlaying(fromPos) { if (bcClock.start && !bcClock.paused) return; bcClock.start = performance.now() - (fromPos != null ? fromPos : bcClock.pos) * 1000; bcClock.paused = false; }
+function bcClockPause() { if (bcClock.start && !bcClock.paused) { bcClock.pos = (performance.now() - bcClock.start) / 1000; bcClock.paused = true; } }
+function drawClock() {
+  const c = songClock();
+  if (!c || !isFinite(c.dur) || c.dur <= 0) { pEls.box.hidden = true; return; }
+  pEls.box.hidden = false;
+  const pos = Math.max(0, Math.min(c.pos, c.dur));
+  pEls.t.textContent = bcTime(pos);
+  pEls.d.textContent = bcTime(c.dur);
+  pEls.fill.style.width = (pos / c.dur * 100).toFixed(2) + '%';
+}
+setInterval(drawClock, 500);
+
+// ── Song heart, Recently played and Saved songs ──
+const isSaved = t => saved.some(x => songKey(x.song) === songKey(t));
+function nowSong() {
+  if (bc && bcTrack()) { const t = bcTrack(); return { song: t.artist + ' – ' + t.title, station: 'Bandcamp · ' + t.album }; }
+  return song ? { song, station: current ? current.name : '' } : null;
+}
+function toggleSaved(x) {
+  if (!x) return;
+  if (isSaved(x.song)) saved = saved.filter(y => songKey(y.song) !== songKey(x.song));
+  else saved.unshift({ song: x.song, station: x.station, at: Date.now() });
+  safeSet('rw_saved', JSON.stringify(saved));
+  renderBar();
+  if ($('songsDlg').open) drawSongs();
+}
+$('songHeart').addEventListener('click', () => toggleSaved(nowSong()));
+function timeAgo(ms) {
+  const min = Math.round((Date.now() - ms) / 60000);
+  return min < 1 ? 'just now' : min < 60 ? min + ' min ago' : min < 1440 ? Math.floor(min / 60) + ' hr ago' : Math.floor(min / 1440) + ' d ago';
+}
+let songsTab = 'recent';
+function drawSongs() {
+  document.querySelectorAll('#songsDlg [data-stab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.stab === songsTab)));
+  const list = songsTab === 'recent' ? heard : saved;
+  const ul = $('songsList');
+  ul.innerHTML = list.length ? '' : '<li class="empty">' + (songsTab === 'recent' ? 'Songs you hear show up here.' : 'Tap ♡ next to a song to keep it here.') + '</li>';
+  list.forEach((x, i) => {
+    const q = encodeURIComponent(x.song.replace(' – ', ' '));
+    const li = document.createElement('li');
+    li.className = 'song';
+    li.innerHTML = '<div class="sTop"><div class="sName"></div><button class="heart' + (isSaved(x.song) ? ' on' : '') + '" data-sv="' + i + '">' + (isSaved(x.song) ? '♥' : '♡') + '</button></div>'
+      + '<div class="sMeta"></div><div class="sLinks">'
+      + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener">YouTube</a>'
+      + '<a href="https://music.youtube.com/search?q=' + q + '" target="_blank" rel="noopener">YouTube Music</a>'
+      + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener">Spotify</a>'
+      + '<a href="https://bandcamp.com/search?q=' + q + '" target="_blank" rel="noopener">Bandcamp</a></div>';
+    li.querySelector('.sName').textContent = x.song;
+    li.querySelector('.sMeta').textContent = (x.station || '') + ' · ' + timeAgo(x.at);
+    ul.appendChild(li);
+  });
+  $('songsCopy').hidden = !list.length;
+}
+$('songsList').addEventListener('click', e => {
+  const b = e.target.closest('[data-sv]');
+  if (b) toggleSaved((songsTab === 'recent' ? heard : saved)[+b.dataset.sv]);
+});
+document.querySelectorAll('#songsDlg [data-stab]').forEach(b => b.addEventListener('click', () => { songsTab = b.dataset.stab; drawSongs(); }));
+$('songsBtn').addEventListener('click', () => { drawSongs(); $('songsDlg').showModal(); });
+$('songsClose').addEventListener('click', () => $('songsDlg').close());
+$('songsDlg').addEventListener('click', e => { if (e.target === $('songsDlg')) $('songsDlg').close(); });
+$('songsCopy').addEventListener('click', () => {
+  const list = songsTab === 'recent' ? heard : saved;
+  const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\n' + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '')).join('\n') + '\n';
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { $('songsCopy').textContent = 'Copied'; setTimeout(() => $('songsCopy').textContent = 'Copy list', 1500); }, () => {});
+});
+$('songShare').addEventListener('click', () => {
+  const x = nowSong();
+  if (!x) return;
+  const text = '🎵 ' + x.song + (x.station ? ' on ' + x.station : '') + ' · via RadioWizard';
+  if (window.AndroidCast && window.AndroidCast.shareText && !window.AndroidCast.desktop) { window.AndroidCast.shareText('Song', text); return; }
+  if (navigator.share && !window.AndroidCast) { navigator.share({ text }).catch(() => {}); return; }
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showNotice('Song copied: ' + x.song));
+});
 
 // ── Share, diag log, version ────────────────────
 $('shareApp').addEventListener('click', e => {

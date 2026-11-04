@@ -139,6 +139,44 @@ async fn probe(args: String) -> Value {
     .unwrap_or_else(|e| json!({ "ok": false, "error": err(e) }))
 }
 
+/// The song playing on a station: asks the stream for its titles ("ICY" metadata) and reads the first one.
+#[tauri::command]
+async fn icy(args: String) -> Value {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut a: Value = serde_json::from_str(&args).unwrap_or(json!({}));
+        a["headers"] = json!({ "Icy-MetaData": "1" });
+        let r = match request(&a, true, a["timeout"].as_u64().unwrap_or(9000)) {
+            Ok(r) => r,
+            Err(e) => return json!({ "ok": false, "error": e }),
+        };
+        let every: usize = match r.header("icy-metaint").and_then(|v| v.trim().parse().ok()) {
+            Some(n) if n > 0 && n <= 300_000 => n,
+            _ => return json!({ "ok": false, "why": "no titles" }),
+        };
+        let mut rd = r.into_reader();
+        let mut skip = vec![0u8; every];
+        if rd.read_exact(&mut skip).is_err() {
+            return json!({ "ok": false, "why": "stream ended" });
+        }
+        let mut len = [0u8; 1];
+        if rd.read_exact(&mut len).is_err() {
+            return json!({ "ok": false });
+        }
+        let mut meta = vec![0u8; len[0] as usize * 16];
+        if rd.read_exact(&mut meta).is_err() {
+            return json!({ "ok": false });
+        }
+        let text = match String::from_utf8(meta.clone()) {
+            Ok(t) => t,
+            Err(_) => meta.iter().map(|&b| b as char).collect(),   // old stations send Latin-1
+        };
+        let title = text.split("StreamTitle='").nth(1).and_then(|t| t.split("';").next()).unwrap_or("").trim().to_string();
+        json!({ "ok": !title.is_empty(), "title": title })
+    })
+    .await
+    .unwrap_or_else(|e| json!({ "ok": false, "error": err(e) }))
+}
+
 /* ---------------- Bandcamp sign-in ---------------- */
 
 #[tauri::command]
@@ -667,7 +705,7 @@ fn main() {
     tauri::Builder::default()
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, bandcamp_login, bandcamp_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
+            http_get, probe, icy, bandcamp_login, bandcamp_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
