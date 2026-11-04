@@ -52,7 +52,7 @@
     color: var(--text);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     min-height: 100dvh;
-    padding: 0 16px calc(var(--bar) + max(16px, env(safe-area-inset-bottom)));
+    padding: 0 16px max(16px, env(safe-area-inset-bottom));
     -webkit-tap-highlight-color: transparent;
   }
   button { font: inherit; color: inherit; }
@@ -94,8 +94,8 @@
 
   .tabs { display: flex; gap: 6px; margin-top: 10px; }
   .tab {
-    flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 4px;
-    font-size: .9rem; cursor: pointer; color: var(--muted);
+    flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 2px;
+    font-size: .84rem; cursor: pointer; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tab[aria-selected="true"] { background: var(--surface-2); color: var(--text); border-color: var(--accent); }
 
@@ -117,7 +117,8 @@
   .picks .chip { font-size: .9rem; padding: 7px 12px; color: var(--text); }
   .hint { color: var(--muted); font-size: .85rem; margin-top: 16px; line-height: 1.5; }
 
-  ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  ul.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  ul.list > li { min-width: 0; }
   .st {
     display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
@@ -137,7 +138,7 @@
   .tag { font-size: .68rem; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
   .tag.ok { color: var(--good); border-color: rgba(126, 231, 168, .35); }
   .tag.bad { color: var(--bad); border-color: rgba(255, 107, 138, .35); }
-  .heart { background: none; border: 0; cursor: pointer; padding: 8px; font-size: 1.25rem; line-height: 1; color: var(--muted); }
+  .heart { background: none; border: 0; cursor: pointer; padding: 6px 8px; font-size: 1.75rem; line-height: 1; color: var(--muted); }
   .heart.on { color: #ff5c9a; text-shadow: 0 0 10px rgba(255, 92, 154, .5); }
   .more { display: block; margin: 12px auto; }
   .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
@@ -149,30 +150,56 @@
   .notice span { flex: 1; }
   .notice button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 1.1rem; }
 
-  .bar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-    padding: 10px 16px max(12px, env(safe-area-inset-bottom));
-    background: var(--bar-bg); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
-  }
-  .bar .wrap { display: grid; gap: 8px; }
-  .barTop { display: flex; align-items: center; gap: 12px; }
-  .bar .art { width: 52px; height: 52px; }
-  .bar .art.spin { animation: pulse 1.6s ease-in-out infinite; }
+  /* The player (like the casters): a card at the top; scrolling the list shrinks the top into a slim mini player. */
+  .player { margin-top: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 8px; }
+  .now { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .player .art { width: 64px; height: 64px; border-radius: 12px; }
+  .player .art.spin { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 16px var(--glow); } }
   .np { flex: 1; min-width: 0; }
-  .np .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .np .sub { color: var(--muted); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .label { display: flex; gap: 8px; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .np .label .state.live { color: var(--good); }
+  .np .label .state.live::before { content: "● "; }
+  .np .name { font-weight: 700; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .sub { color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .np .sub.live { color: var(--good); }
+  .player .row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .player .row .iconBtn { padding: 8px; color: var(--text); }
+  .player .row .iconBtn svg { width: 24px; height: 24px; }
+  .player .row .iconBtn:disabled { opacity: .35; cursor: default; }
+  .player .row .vol { display: flex; gap: 4px; align-items: center; color: var(--accent); }
+  .volnum { font-weight: 700; font-size: .9rem; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: left; }
   .play {
-    width: 52px; height: 52px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
+    width: 56px; height: 56px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
     background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #000)); color: #fff; display: grid; place-items: center;
     box-shadow: 0 0 16px var(--glow);
   }
-  .play svg { width: 24px; height: 24px; }
+  .play svg { width: 26px; height: 26px; }
   .play:disabled { opacity: .5; cursor: default; }
   .volRow { display: flex; align-items: center; gap: 10px; }
-  .volRow .iconBtn { padding: 2px; }
-  .volRow .where { font-size: .75rem; color: var(--muted); white-space: nowrap; min-width: 4.5em; text-align: right; }
+  .volRow .iconBtn { padding: 2px 4px; font-size: 1.15rem; }
+  .player .heart { font-size: 1.75rem; padding: 4px 8px; }
+
+  header.top.mini { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
+  header.top.mini .titleRow { zoom: .8; }
+  header.top.mini .searchRow, header.top.mini .tabs, header.top.mini .volRow, header.top.mini .np .label,
+  header.top.mini #shufBtn, header.top.mini #prevBtn, header.top.mini #muteBtn, header.top.mini #addBtn, header.top.mini .pTime { display: none !important; }
+  header.top.mini .player { position: relative; display: flex; align-items: center; gap: 6px; padding: 7px 5px 7px 7px; border-radius: 12px; overflow: hidden; margin-top: 6px; }
+  header.top.mini .now { flex: 1; min-width: 0; gap: 10px; cursor: pointer; }
+  header.top.mini .player .art { width: 42px; height: 42px; border-radius: 9px; }
+  header.top.mini .np .name { font-size: .92rem; }
+  header.top.mini .np .sub { font-size: .78rem; }
+  header.top.mini .player .row { flex: none; gap: 0; }
+  header.top.mini .play { width: 42px; height: 42px; margin: 0 2px; }
+  header.top.mini .play svg { width: 21px; height: 21px; }
+  header.top.mini .player .heart { font-size: 1.5rem; padding: 4px; }
+  header.top.mini .player .row .iconBtn { padding: 6px; }
+  header.top.mini .prog { position: absolute; left: 0; right: 0; bottom: 0; gap: 0; }
+  header.top.mini .pTrack { height: 2px; border-radius: 0; background: transparent; }
+  html { overflow-anchor: none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; mix-blend-mode: normal; }
+  .toTop { position: fixed; right: 16px; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 6; width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font-size: 1.3rem; cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, .35); }
   input[type=range] { flex: 1; accent-color: var(--accent); }
 
   footer { text-align: center; color: var(--muted); font-size: .78rem; margin: 26px 0 8px; line-height: 1.7; }
@@ -211,7 +238,7 @@
   .trk.off { opacity: .45; cursor: default; }
   .subRow { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .subRow .sub { min-width: 0; }
-  .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1rem; padding: 0 4px; flex: none; }
+  .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
   .sHeart.on { color: #ff5c9a; }
   .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
@@ -221,10 +248,21 @@
   li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
   li.song .sTop { display: flex; align-items: center; gap: 6px; }
   li.song .sName { flex: 1; font-weight: 600; }
-  li.song .heart { padding: 2px 4px; font-size: 1.05rem; }
+  li.song .heart { padding: 2px 6px; font-size: 1.6rem; }
   li.song .sMeta { color: var(--muted); font-size: .78rem; }
   li.song .sLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
   li.song .sLinks a { color: var(--accent-2); }
+  .favHead { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
+  .favHead .who { flex: 1; color: var(--muted); font-size: .9rem; }
+  .favHead select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .88rem; }
+  .catHead { margin: 16px 2px 6px; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .catHead small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
+  .plChoices { display: grid; gap: 6px; max-height: 40dvh; overflow: auto; }
+  .plChoice { text-align: left; }
+  .plChoice small { color: var(--muted); }
+  .trk .add, .st .add { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.35rem; padding: 2px 8px; line-height: 1; }
+  .trk .add:hover, .st .add:hover { color: var(--accent); }
+  .songHits h4 { margin: 14px 2px 6px; color: var(--muted); font-size: .85rem; font-weight: 600; }
   .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 14px; }
   .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); }
   .sw span { width: 18px; height: 18px; border-radius: 50%; background: var(--c); flex: none; border: 1px solid rgba(128, 128, 128, .35); }
@@ -248,6 +286,36 @@
         <span id="castLabel">Cast</span>
       </button>
     </div>
+    <div class="player" id="bar">
+      <div class="now" id="nowArea">
+        <img class="art" id="npArt" src="icon-192.png" alt="">
+        <div class="np">
+          <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span></div>
+          <div class="name" id="npName">Nothing playing</div>
+          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button></div>
+        </div>
+      </div>
+      <div class="prog" id="prog" hidden><span class="pTime" id="pT">0:00</span><div class="pTrack"><i id="pFill"></i></div><span class="pTime" id="pD">0:00</span></div>
+      <div class="row">
+        <button class="iconBtn" id="shufBtn" title="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+        <button class="iconBtn" id="prevBtn" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+        <button class="heart" id="npHeart" title="Favorite station" hidden>♡</button>
+        <button class="play" id="playBtn" title="Play / stop" disabled>
+          <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="iconBtn" id="nextBtn" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg></button>
+        <button class="iconBtn" id="addBtn" title="Add to a playlist" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h12M3 12h12M3 18h7M18 13v8M14 17h8"/></svg></button>
+        <button class="iconBtn vol" id="muteBtn" title="Mute">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path id="muteIcon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+          <span class="volnum" id="volNum">80%</span>
+        </button>
+      </div>
+      <div class="volRow">
+        <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
+        <button class="iconBtn" id="songShare" title="Share this song" hidden>📤</button>
+        <button class="iconBtn" id="songsBtn" title="Recently played and saved songs">🎵</button>
+      </div>
+    </div>
     <form class="searchRow" id="searchForm" autocomplete="off">
       <label class="search">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -261,14 +329,16 @@
     </form>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="search" aria-selected="true">Search</button>
-      <button class="tab" role="tab" data-tab="favs" aria-selected="false">♥ Favorites</button>
+      <button class="tab" role="tab" data-tab="favs" aria-selected="false">♥ Favs</button>
       <button class="tab" role="tab" data-tab="recent" aria-selected="false">Recent</button>
       <button class="tab" role="tab" data-tab="bc" aria-selected="false">Bandcamp</button>
+      <button class="tab" role="tab" data-tab="pl" aria-selected="false">Playlists</button>
     </div>
   </header>
 
   <div class="notice" id="notice" hidden><span id="noticeText"></span><button id="noticeClose" title="Close">✕</button></div>
   <main id="main"></main>
+  <button class="toTop" id="toTop" title="Back to the top" hidden>↑</button>
 
   <footer>
     <div>Searches free public radio directories. Stations belong to their owners.</div>
@@ -277,37 +347,36 @@
   </footer>
 </div>
 
-<div class="bar" id="bar">
-  <div class="wrap">
-    <div class="barTop">
-      <img class="art" id="npArt" src="icon-192.png" alt="">
-      <div class="np">
-        <div class="name" id="npName">Nothing playing</div>
-        <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button></div>
-      </div>
-      <button class="heart" id="npHeart" title="Favorite" hidden>♡</button>
-      <button class="iconBtn" id="nextBtn" title="Next song" hidden><svg viewBox="0 0 24 24" fill="currentColor" style="width:28px;height:28px"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg></button>
-      <button class="play" id="playBtn" title="Play / stop" disabled>
-        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-    </div>
-    <div class="prog" id="prog" hidden><span id="pT">0:00</span><div class="pTrack"><i id="pFill"></i></div><span id="pD">0:00</span></div>
-    <div class="volRow">
-      <button class="iconBtn" id="muteBtn" title="Mute">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path id="muteIcon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
-      </button>
-      <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
-      <span class="where" id="where">This device</span>
-      <button class="iconBtn" id="songShare" title="Share this song">📤</button>
-      <button class="iconBtn" id="songsBtn" title="Recently played and saved songs">🎵</button>
-    </div>
-  </div>
-</div>
-
 <dialog id="srcDlg">
   <h3>Directories to search</h3>
   <div id="srcList"></div>
   <div class="row"><button type="button" id="srcAll">All</button><button type="button" class="main" id="srcDone">Done</button></div>
+</dialog>
+
+<dialog id="catDlg">
+  <h3>Category</h3>
+  <div class="hint" id="catWhat" style="margin:0 0 10px"></div>
+  <div id="catChoices" class="srcChips"></div>
+  <div class="row" style="justify-content:stretch"><input class="field" id="catNew" placeholder="Or type a new one" style="flex:1"><button type="button" class="main" id="catSet">Use it</button></div>
+  <div class="row"><button type="button" id="catAuto">Back to automatic</button><button type="button" id="catCancel">Cancel</button></div>
+</dialog>
+
+<dialog id="plDlg">
+  <h3>Add to a playlist</h3>
+  <div class="hint" id="plWhat" style="margin:0 0 10px"></div>
+  <div id="plChoices" class="plChoices"></div>
+  <div class="row" style="justify-content:stretch"><input class="field" id="plNew" placeholder="New playlist name" style="flex:1"><button type="button" class="main" id="plMake">Make it</button></div>
+  <div class="row"><button type="button" id="plCancel">Cancel</button></div>
+</dialog>
+
+<dialog id="plMenu">
+  <h3>Playlist</h3>
+  <div class="row" style="justify-content:flex-start">
+    <button type="button" id="plRename">Rename</button>
+    <button type="button" id="plCopy">Copy as text</button>
+    <button type="button" id="plDelete">Delete</button>
+  </div>
+  <div class="row"><button type="button" class="main" id="plMenuClose">Close</button></div>
 </dialog>
 
 <dialog id="themeDlg">
@@ -319,7 +388,7 @@
 <dialog id="songsDlg">
   <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">♥ Saved songs</button></div>
   <ul class="list" id="songsList"></ul>
-  <div class="row"><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
+  <div class="row"><button type="button" id="songsSave">Save as file</button><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
 </dialog>
 
 <dialog id="bcDlg">
@@ -345,7 +414,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -793,7 +862,7 @@ let renderTimer = null;
 function scheduleRender() { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; render(); }, 120); }
 
 // ── Favorites and recent ────────────────────────
-const keep = st => ({ key: st.key, name: st.name, img: st.img, country: st.country, tags: st.tags, codec: st.codec, bitrate: st.bitrate, pop: st.pop, srcs: st.srcs });
+const keep = st => ({ ...(st.cat ? { cat: st.cat } : {}), key: st.key, name: st.name, img: st.img, country: st.country, tags: st.tags, codec: st.codec, bitrate: st.bitrate, pop: st.pop, srcs: st.srcs });
 let favs = readJSON('rw_favs', []);
 let recent = readJSON('rw_recent', []);
 const isFav = st => favs.some(f => f.key === st.key);
@@ -824,6 +893,8 @@ function stationRow(st, i) {
     + '<img class="art" loading="lazy" alt="" src="' + esc(st.img || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(st.name) + '</div><div class="meta">' + esc(meta || ' ') + '</div>'
     + '<div class="srcs">' + check + names.map(n => '<span class="tag">' + esc(n) + '</span>').join('') + '</div></div>'
+    + (tab === 'favs' ? '<button class="add" data-cat="' + i + '" title="Change its category" style="font-size:1.05rem">🏷</button>' : '')
+    + '<button class="add" data-addst="' + i + '" title="Add to a playlist">＋</button>'
     + '<button class="heart' + (isFav(st) ? ' on' : '') + '" data-heart="' + i + '" title="Favorite">' + (isFav(st) ? '♥' : '♡') + '</button></li>';
 }
 function render() {
@@ -854,26 +925,42 @@ function render() {
     }
   } else if (tab === 'bc') {
     h += bcView();
+  } else if (tab === 'pl') {
+    h += plView();
+  } else if (tab === 'favs') {
+    h += favView();
   } else {
-    const list = tab === 'favs' ? favs : recent;
-    if (!list.length) h += '<div class="empty">' + (tab === 'favs' ? 'Tap ♡ on a station to keep it here.' : 'Stations you play show up here.') + '</div>';
+    const list = recent;
+    if (!list.length) h += '<div class="empty">Stations you play show up here.</div>';
     h += '<ul class="list" style="margin-top:12px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
   }
   els.main.innerHTML = h;
   const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
   const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
   if (tab === 'bc') bcWire();
+  if (tab === 'pl') plWire();
+  const fs = $('favSort'); if (fs) fs.onchange = () => { favSort = fs.value; safeSet('rw_favsort', favSort); render(); };
 }
 els.main.addEventListener('click', e => {
   const pick = e.target.closest('[data-pick]');
   if (pick) { els.q.value = pick.dataset.pick; els.clearQ.hidden = false; runSearch(pick.dataset.pick); return; }
   const heart = e.target.closest('[data-heart]');
   if (heart) { toggleFav(listed[+heart.dataset.heart]); return; }
+  const catB = e.target.closest('[data-cat]');
+  if (catB) { catAsk(listed[+catB.dataset.cat]); return; }
+  const addSt = e.target.closest('[data-addst]');
+  if (addSt) { const st = listed[+addSt.dataset.addst]; plAsk([{ k: 'radio', st: keep(st) }], st.name); return; }
+  const addT = e.target.closest('[data-addt]');
+  if (addT) { const t = bcAlbum.tracks[+addT.dataset.addt]; plAsk([bcItem(t)], t.title); return; }
+  const addS = e.target.closest('[data-adds]');
+  if (addS) { const t = bcHits[+addS.dataset.adds]; plAsk([t], t.title); return; }
+  const hit = e.target.closest('[data-hit]');
+  if (hit) { bcPlayHit(bcHits[+hit.dataset.hit]); return; }
   const row = e.target.closest('.st');
   if (row && row.dataset.bcalbum != null) { bcOpenAlbum(bcShown[+row.dataset.bcalbum]); return; }
-  if (row) { playStation(listed[+row.dataset.i]); return; }
+  if (row && row.dataset.i != null) { playStation(listed[+row.dataset.i], false, listed.slice()); return; }
   const trk = e.target.closest('.trk');
-  if (trk && !trk.classList.contains('off')) bcPlayAlbum(bcAlbum, +trk.dataset.t);
+  if (trk && trk.dataset.t != null && !trk.classList.contains('off')) bcPlayAlbum(bcAlbum, +trk.dataset.t);
 });
 els.form.addEventListener('submit', e => { e.preventDefault(); els.q.blur(); runSearch(els.q.value); });
 els.q.addEventListener('input', () => { els.clearQ.hidden = !els.q.value; });
@@ -928,8 +1015,10 @@ function choose(st) {
   const rbSrc = st.srcs.find(s => s.src === 'rb' && s.rid);
   if (rbSrc) rb('/json/url/' + rbSrc.rid).catch(() => {});   // counts the play for Radio Browser
 }
-function playStation(st) {
+function playStation(st, keepPl, list) {
   if (!st) return;
+  if (!keepPl) plCtx = null;
+  if (list) playCtx = { list };
   hideNotice();
   bcStop();
   songStop();
@@ -939,8 +1028,10 @@ function playStation(st) {
   render(); renderBar();
 }
 let hereTok = 0;
+let hereStartAt = 0, speakerStartAt = 0;
 async function playHere(st) {
   const tok = ++hereTok;
+  hereStartAt = Date.now();
   hereState = 'starting'; renderBar();
   const links = await streamsFor(st);
   if (tok !== hereTok) return;
@@ -1030,6 +1121,7 @@ let speakerLinks = null;
 async function loadOnSpeaker(st, links) {
   const session = ctx && ctx.getCurrentSession();
   if (!session) return;
+  if (!links) speakerStartAt = Date.now();
   speakerLoading = st; renderBar();
   if (!links) { links = await streamsFor(st); links.i = 0; }
   if (speakerLoading !== st) return;
@@ -1128,7 +1220,7 @@ els.playBtn.addEventListener('click', () => {
   renderBar();
 });
 els.npHeart.addEventListener('click', () => { if (current) toggleFav(current); });
-$('nextBtn').addEventListener('click', () => bcNext());
+$('nextBtn').addEventListener('click', () => goNext());
 els.muteBtn.addEventListener('click', () => {
   if (castConnected()) ctrl.muteOrUnmute();
   else { audio.muted = !audio.muted; renderBar(); }
@@ -1138,15 +1230,27 @@ audio.volume = els.vol.value / 100;
 els.vol.addEventListener('input', () => {
   if (castConnected() && player) { player.volumeLevel = els.vol.value / 100; ctrl.setVolumeLevel(); }
   else { audio.volume = els.vol.value / 100; safeSet('rw_vol', els.vol.value); }
+  $('volNum').textContent = els.vol.value + '%';
 });
+// The mouse wheel turns the volume up and down over the volume slider or the volume button (5% a notch).
+function wheelVolume(e) {
+  e.preventDefault();
+  const v = Math.max(0, Math.min(100, (+els.vol.value) + (e.deltaY < 0 ? 5 : -5)));
+  if (v === +els.vol.value) return;
+  els.vol.value = v;
+  els.vol.dispatchEvent(new Event('input'));
+}
+els.vol.addEventListener('wheel', wheelVolume, { passive: false });
+els.muteBtn.addEventListener('wheel', wheelVolume, { passive: false });
 
 function renderBar() {
   const cast = castConnected();
   const dev = cast ? ctx.getCurrentSession().getCastDevice().friendlyName : '';
   els.castBtn.classList.toggle('on', cast);
   els.castLabel.textContent = cast ? dev : ctx ? 'Cast' : els.castLabel.textContent;
-  els.where.textContent = cast ? 'Speaker' : 'This device';
-  $('nextBtn').hidden = !bc;
+  els.where.textContent = cast ? 'on ' + dev : 'This device';
+  $('volNum').textContent = els.vol.value + '%';
+  $('addBtn').hidden = !(bc && bcTrack()) && !current;
   const ns = nowSong();
   $('songHeart').hidden = !ns;
   $('songShare').hidden = !ns;
@@ -1163,19 +1267,21 @@ function renderBar() {
   let sub = 'Search for a station and tap it', live = false, busy = false, playing = false;
   if (cast) {
     const PS = chrome.cast.media.PlayerState;
-    if (speakerLoading) { sub = 'Starting on ' + dev + '…'; busy = true; }
+    if (speakerLoading) { sub = 'Starting on ' + dev + '…' + secsSince(speakerStartAt); busy = true; }
     else if (castActive() && player.playerState === PS.BUFFERING) { sub = 'Buffering on ' + dev + '…'; busy = true; playing = true; }
     else if (castActive() && speakerPaused()) sub = 'Paused on ' + dev;
     else if (castActive()) { sub = 'Live on ' + dev; live = true; playing = true; }
     else sub = st ? 'Tap play to start on ' + dev : 'Connected to ' + dev;
     if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
   } else if (st) {
-    if (hereState === 'starting') { sub = 'Tuning in…'; busy = true; playing = true; }
+    if (hereState === 'starting') { sub = 'Tuning in…' + secsSince(hereStartAt); busy = true; playing = true; }
     else if (hereState === 'playing' && !audio.paused) { sub = 'Live' + (st.country ? ' · ' + st.country : ''); live = true; playing = true; }
     else sub = [st.country, st.tags.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Tap play';
     if (document.activeElement !== els.vol) els.vol.value = Math.round(audio.volume * 100);
   }
   if (song && (live || playing) && !busy) { sub = '♪ ' + song; live = false; }
+  barBusy = busy;
+  setLabel(busy ? 'Starting' : live || (playing && song) ? 'Live' : cast && castActive() && speakerPaused() ? 'Paused' : st ? 'Ready' : 'Ready', live || (playing && !busy));
   els.npSub.textContent = sub;
   els.npSub.title = song || '';
   els.npSub.classList.toggle('live', live);
@@ -1241,7 +1347,7 @@ async function bcLoad() {
       const d = await getJSON('https://bandcamp.com/api/fancollection/1/collection_items', { method: 'POST', type: 'application/json', body: JSON.stringify({ fan_id: fan, older_than_token: token, count: 100 }) });
       (d.items || []).forEach(x => {
         if (!x.item_url) return;
-        out.push({ id: x.tralbum_type + x.tralbum_id, title: x.album_title || x.item_title, artist: x.band_name, url: x.item_url, art: bcArt(x.item_art_id), type: x.tralbum_type });
+        out.push({ id: x.tralbum_type + x.tralbum_id, title: x.album_title || x.item_title, artist: x.band_name, url: x.item_url, art: bcArt(x.item_art_id), type: x.tralbum_type, band: x.band_id, tid: x.tralbum_id });
       });
       bcBusy = 'Loading your collection… ' + out.length; render();
       if (!d.more_available || !d.last_token) break;
@@ -1266,7 +1372,7 @@ async function bcTracks(item) {
   if (!m) throw new Error('no album data');
   const d = JSON.parse(unent(m[1]));
   const tracks = (d.trackinfo || []).map((t, n) => ({
-    n: t.track_num || n + 1, title: t.title, artist: t.artist || item.artist, album: item.title, art: item.art, dur: t.duration || 0,
+    n: t.track_num || n + 1, title: t.title, artist: t.artist || item.artist, album: item.title, art: item.art, dur: t.duration || 0, au: item.url,
     url: t.file && (t.file['mp3-v0'] || t.file['mp3-128']) || null,
   }));
   bcTrackCache.set(item.url, { at: Date.now(), tracks });
@@ -1282,12 +1388,12 @@ function bcView() {
     const a = bcAlbum;
     h += '<div class="bcHead"><button class="btn" id="bcBack">‹ Back</button></div>';
     h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt=""><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
-      + '<button class="btn main" id="bcPlayAll">▶ Play</button> <button class="btn" id="bcShuf">🔀 Shuffle</button></div></div>';
+      + '<button class="btn main" id="bcPlayAll">▶ Play</button> <button class="btn" id="bcShuf">🔀 Shuffle</button> <button class="btn" id="bcAddAll">＋ Playlist</button></div></div>';
     if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this album. Try again.' : 'Opening…') + '</div>';
     else {
       const playing = bcTrack();
       h += '<ul class="list">' + a.tracks.map((t, i) => '<li class="trk' + (t.url ? '' : ' off') + (playing && playing.url && playing.url === t.url ? ' now' : '') + '" data-t="' + i + '"><span class="n">' + t.n + '</span><span class="t">' + esc(t.title)
-        + '</span><span class="d">' + (t.url ? bcTime(t.dur) : 'not streamable') + '</span></li>').join('') + '</ul>';
+        + '</span><span class="d">' + (t.url ? bcTime(t.dur) : 'not streamable') + '</span>' + (t.url ? '<button class="add" data-addt="' + i + '" title="Add to a playlist">＋</button>' : '') + '</li>').join('') + '</ul>';
     }
     return h;
   }
@@ -1300,16 +1406,21 @@ function bcView() {
     return h;
   }
   h += '<div class="bcHead"><div class="who"><b>' + esc(bcUser || 'Bandcamp') + '</b> · ' + (bcBusy ? esc(bcBusy) : bcItems.length + ' items') + '</div>'
-    + '<button class="btn main" id="bcShufAll">🔀 Shuffle all</button><button class="btn" id="bcMenu">⋯</button></div>';
-  h += '<input class="field" id="bcFilter" placeholder="Filter by album or artist" value="' + esc(bcFilter) + '" autocomplete="off">';
+    + '<button class="btn main" id="bcShufAll">🔀 Shuffle all</button>' + (bcIdx && !(bcIdx.miss && bcIdx.miss.length) && bcIdx.alb.length >= bcItems.length ? '' : '<button class="btn" id="bcFind" title="Make every song searchable (about 9 MB the first time)">🔎 ' + (bcIdx ? 'Finish finding songs' : 'Find songs') + '</button>') + '<button class="btn" id="bcMenu">⋯</button></div>'
+    + (bcIdxBusy ? '<div class="hint bcIdxMsg" style="margin:0 0 8px">' + esc(bcIdxBusy) + '</div>' : '');
+  h += '<input class="field" id="bcFilter" placeholder="' + (bcIdx ? 'Find a song, album or artist (' + bcIdx.tr.length + ' songs)' : 'Filter by album or artist') + '" value="' + esc(bcFilter) + '" autocomplete="off">';
   h += '<ul class="list" id="bcList" style="margin-top:10px">' + bcListHtml() + '</ul>';
   return h;
 }
+let bcHits = [];
 function bcListHtml() {
   const f = bcFilter.toLowerCase().trim();
+  bcHits = f.length > 1 ? bcSongMatches(f) : [];
+  const playing = bcTrack();
+  const songs = bcHits.length ? '<li class="songHits"><h4>Songs · ' + bcHits.length + (bcHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + bcHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.au === t.au && playing.n === t.n ? ' now' : '') + '" data-hit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist + ' · ' + t.album) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-adds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Albums</h4></li>' : '';
   bcShown = f ? bcItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : bcItems;
   const cut = bcShown.slice(0, bcMore);
-  return cut.map((x, i) => '<li class="st" data-bcalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+  return songs + cut.map((x, i) => '<li class="st" data-bcalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.artist) + (x.type === 't' ? ' · single track' : '') + '</div></div></li>').join('')
     + (bcShown.length > bcMore ? '<li><button class="chip more" id="bcMoreBtn">Show more (' + (bcShown.length - bcMore) + ')</button></li>' : '')
     + (!bcShown.length && !bcBusy ? '<li class="empty">Nothing matches.</li>' : '');
@@ -1322,6 +1433,8 @@ function bcWire() {
   on('bcBack', () => { bcAlbum = null; render(); });
   on('bcPlayAll', () => bcPlayAlbum(bcAlbum, 0));
   on('bcShuf', () => bcPlayAlbum(bcAlbum, -1));
+  on('bcAddAll', () => bcAlbum && bcAlbum.tracks && plAsk(bcAlbum.tracks.filter(t => t.url).map(bcItem), bcAlbum.title));
+  on('bcFind', () => bcIndex());
   on('bcShufAll', () => bcShuffleAll());
   on('bcMenu', () => $('bcDlg').showModal());
   on('bcMoreBtn', () => { bcMore += 150; $('bcList').innerHTML = bcListHtml(); bcWire(); });
@@ -1344,8 +1457,9 @@ async function bcOpenAlbum(item) {
   if (tab === 'bc' && bcAlbum && bcAlbum.url === item.url) render();
 }
 function bcShuffle(list) { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; } return list; }
-function bcStart(queue, i, shuffle) {
+function bcStart(queue, i, shuffle, fromPl) {
   if (!queue.length) { showNotice('Nothing on this album can be streamed.'); return; }
+  if (!fromPl) plCtx = null;
   stopHere();
   speakerStation = speakerLoading = null;
   bc = { queue, i, shuffle, where: castConnected() ? 'speaker' : 'here', state: 'starting' };
@@ -1380,6 +1494,7 @@ async function bcNext() {
   if (!bc) return;
   if (bc.i >= bc.queue.length - 1 && bc.shuffle) { if (!bcPre) bcPrefetch(); if (bcPre) await bcPre; }
   if (!bc) return;
+  if (bc.i >= bc.queue.length - 1 && plCtx) { plStep(1); return; }
   if (bc.i >= bc.queue.length - 1) { diag('bandcamp: end of queue'); bc.state = 'ended'; renderBar(); return; }
   bc.i++;
   bcGo(0);
@@ -1395,10 +1510,15 @@ function bcHeard() {
     safeSet('rw_heard', JSON.stringify(heard));
   }
 }
+async function bcPlayHit(t) {
+  try { const r = await plResolve(t); if (r) { bcStart([r], 0, false); return; } } catch (e) {}
+  showNotice('Couldn’t get that song from Bandcamp. Try again.');
+}
 function bcGo(pos) {
   const t = bcTrack();
   if (!t) return;
   songStop();
+  bc.startAt = Date.now();
   bc.state = 'starting';
   diag('bandcamp ' + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
   if (bc.where === 'speaker' && castConnected()) bcLoadSpeaker(pos);
@@ -1467,13 +1587,13 @@ function bcRenderBar(cast, dev) {
   let sub = t ? t.artist + ' · ' + t.album : '', playing = false, busy = false;
   if (bc.where === 'speaker' && cast) {
     const PS = chrome.cast.media.PlayerState;
-    if (bc.state === 'starting' || player.playerState === PS.BUFFERING) { sub = 'Starting on ' + dev + '…'; busy = true; playing = true; }
+    if (bc.state === 'starting' || player.playerState === PS.BUFFERING) { sub = 'Starting on ' + dev + '…' + secsSince(bc.startAt); busy = true; playing = true; }
     else if (speakerPaused() || bc.state === 'paused') sub = 'Paused on ' + dev + ' · ' + sub;
     else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
     else { sub = sub + ' · on ' + dev; playing = true; }
     if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
   } else {
-    if (bc.state === 'starting') { busy = true; playing = true; sub = 'Starting… · ' + sub; }
+    if (bc.state === 'starting') { busy = true; playing = true; sub = 'Starting…' + secsSince(bc.startAt) + ' · ' + sub; }
     else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
     else if (!audio.paused) playing = true;
     else sub = 'Paused · ' + sub;
@@ -1481,6 +1601,8 @@ function bcRenderBar(cast, dev) {
   els.npSub.textContent = sub;
   els.npSub.classList.toggle('live', false);
   els.npArt.classList.toggle('spin', busy);
+  barBusy = busy;
+  setLabel(busy ? 'Starting' : bc.state === 'ended' ? 'Finished' : playing ? (plCtx ? 'Playlist' : 'Bandcamp') : 'Paused', playing && !busy);
   els.playBtn.disabled = false;
   els.playIcon.innerHTML = playing ? '<path d="M7 5h4v14H7zm6 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
 }
@@ -1694,6 +1816,21 @@ $('songsCopy').addEventListener('click', () => {
   const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\n' + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '')).join('\n') + '\n';
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { $('songsCopy').textContent = 'Copied'; setTimeout(() => $('songsCopy').textContent = 'Copy list', 1500); }, () => {});
 });
+$('songsSave').addEventListener('click', () => {
+  const list = songsTab === 'recent' ? heard : saved;
+  if (!list.length) return;
+  const name = 'RadioWizard ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '.md';
+  const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\nUpdated ' + new Date().toLocaleString() + '\n\n'
+    + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '') + ' · [YouTube](https://www.youtube.com/results?search_query=' + encodeURIComponent(x.song.replace(' – ', ' ')) + ')').join('\n') + '\n';
+  if (window.AndroidCast && window.AndroidCast.saveFile && !window.AndroidCast.desktop) {
+    showNotice(window.AndroidCast.saveFile(name, text) ? 'Saved “' + name + '” in Downloads.' : 'Couldn’t save the file.');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
 $('songShare').addEventListener('click', () => {
   const x = nowSong();
   if (!x) return;
@@ -1702,6 +1839,363 @@ $('songShare').addEventListener('click', () => {
   if (navigator.share && !window.AndroidCast) { navigator.share({ text }).catch(() => {}); return; }
   if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showNotice('Song copied: ' + x.song));
 });
+
+// ── Player buttons: shuffle, previous, next (like the casters) ─────────
+// Radio: previous / next / shuffle move through the list the station was picked from (search results,
+// favorites, recent). Bandcamp: songs in the album or shuffle. Playlists: their own order.
+let playCtx = null;   // { list: [stations], tab }
+function radioStep(d) {
+  const list = playCtx && playCtx.list && playCtx.list.length ? playCtx.list : (tab === 'favs' ? favs : tab === 'recent' ? recent : results);
+  if (!list.length) return;
+  let i = current ? list.findIndex(x => x.key === current.key) : -1;
+  i = i < 0 ? 0 : (i + d + list.length) % list.length;
+  playStation(list[i], false, list);
+}
+function goNext() { if (plCtx) plStep(1); else if (bc) bcNext(); else radioStep(1); }
+function goPrev() {
+  if (plCtx) { plStep(-1); return; }
+  if (bc) {
+    const pos = bc.where === 'here' ? audio.currentTime : (bcClock.start ? (performance.now() - bcClock.start) / 1000 : 0);
+    if (pos > 5 || bc.i === 0) bcGo(0);   // like a CD player: first back to the start of the song
+    else { bc.i--; bcGo(0); }
+    return;
+  }
+  radioStep(-1);
+}
+function goShuffle() {
+  if (plCtx) { const pl = pls.find(x => x.id === plCtx.id); if (pl) playPlaylist(pl, 0, true); return; }
+  if (tab === 'bc' || bc) { bcShuffleAll(); return; }
+  const list = tab === 'favs' ? favs : tab === 'recent' ? recent : results.filter(s => s.check !== 'dead');
+  if (!list.length) { showNotice('Search for stations first, then shuffle plays a random one.'); return; }
+  playStation(list[Math.floor(Math.random() * list.length)], false, list);
+}
+$('prevBtn').addEventListener('click', goPrev);
+$('shufBtn').addEventListener('click', goShuffle);
+$('addBtn').addEventListener('click', () => {
+  if (bc && bcTrack()) plAsk([bcItem(bcTrack())], bcTrack().title);
+  else if (current) plAsk([{ k: 'radio', st: keep(current) }], current.name);
+});
+
+// "Starting… 3s" while a station or song is getting going (the casters count too).
+let barBusy = false;
+setInterval(() => { if (barBusy) renderBar(); }, 1000);
+const secsSince = t => t ? ' ' + Math.max(0, Math.round((Date.now() - t) / 1000)) + 's' : '';
+function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.classList.toggle('live', !!live); }
+
+// ── Mini player ──
+// The moment the list starts moving up, the top shrinks to one slim bar and the list rides up with it.
+// Any scroll up, or a tap on the bar, brings the full player back. The height given up is added under the page,
+// so the page length and scroll position never change (on short lists that would bounce). Same as Four Realms.
+{
+  const topEl = document.querySelector('header.top'), mainEl = document.querySelector('main'), root = document.documentElement;
+  let mini = false, vt = null;
+  const apply = on => {
+    if (on) {
+      const h = topEl.offsetHeight;
+      mainEl.style.paddingBottom = h + 'px';
+      topEl.classList.add('mini');
+      const d = Math.max(0, h - topEl.offsetHeight);
+      mainEl.style.paddingBottom = d + 'px';
+    } else {
+      topEl.classList.remove('mini'); mainEl.style.paddingBottom = '';
+    }
+  };
+  const setMini = on => {
+    if (on === mini) return;
+    mini = on;
+    if (vt) vt.skipTransition();
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(on); return; }
+    const t = vt = document.startViewTransition(() => apply(on));
+    t.finished.finally(() => { if (vt === t) vt = null; });
+  };
+  let lastY = scrollY;
+  addEventListener('scroll', () => {
+    const y = scrollY, dy = y - lastY;
+    $('toTop').hidden = y < 700;
+    if (y <= 2) { setMini(false); lastY = y; return; }
+    if (dy > 4) { setMini(true); lastY = y; }
+    else if (dy < -6) { setMini(false); lastY = y; }
+  }, { passive: true });
+  $('nowArea').addEventListener('click', () => { if (mini) { setMini(false); lastY = scrollY; } });
+  $('toTop').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+}
+
+// ── Playlists ─────────────────────────────────
+// A playlist mixes Bandcamp songs and radio stations. Bandcamp's song links run out after a day, so a playlist
+// keeps which album and song it is, and gets a fresh link when it plays. A radio station plays until ⏭.
+let pls = readJSON('rw_pls', []);
+let plOpen = null, plCtx = null;   // plCtx = { id, order: [item indexes], i }
+const savePls = () => { try { localStorage.setItem('rw_pls', JSON.stringify(pls)); } catch (e) { showNotice('This device is out of space for playlists.'); } };
+const plKey = it => it.k === 'bc' ? 'bc|' + it.au + '|' + it.n + '|' + it.title : 'radio|' + it.st.key;
+function bcItem(t) { return { k: 'bc', title: t.title, artist: t.artist, album: t.album, art: t.art, dur: t.dur, n: t.n, au: t.au }; }
+
+let plPending = null;
+function plAsk(items, what) {
+  plPending = items;
+  $('plWhat').textContent = items.length === 1 ? what : items.length + ' songs from ' + what;
+  $('plNew').value = '';
+  $('plChoices').innerHTML = pls.length ? pls.map((p, i) => '<button class="btn plChoice" data-pi="' + i + '">' + esc(p.name) + ' <small>· ' + p.items.length + '</small></button>').join('') : '<div class="hint" style="margin:0">No playlists yet: name one below.</div>';
+  $('plDlg').showModal();
+}
+function plAdd(pl, items) {
+  const have = new Set(pl.items.map(plKey));
+  const add = items.filter(it => !have.has(plKey(it)));
+  pl.items.push(...add);
+  savePls();
+  showNotice(add.length ? 'Added ' + (add.length === 1 ? '“' + (add[0].title || add[0].st.name) + '”' : add.length + ' items') + ' to ' + pl.name + '.' : 'Already in ' + pl.name + '.');
+  if (tab === 'pl') render();
+}
+$('plChoices').addEventListener('click', e => { const b = e.target.closest('[data-pi]'); if (!b) return; $('plDlg').close(); plAdd(pls[+b.dataset.pi], plPending); });
+$('plMake').addEventListener('click', () => {
+  const name = $('plNew').value.trim();
+  if (!name) { $('plNew').focus(); return; }
+  const pl = { id: 'p' + Date.now().toString(36), name, items: [] };
+  pls.unshift(pl);
+  $('plDlg').close();
+  plAdd(pl, plPending || []);
+});
+$('plCancel').addEventListener('click', () => $('plDlg').close());
+$('plDlg').addEventListener('click', e => { if (e.target === $('plDlg')) $('plDlg').close(); });
+
+function plItemRow(it, i, pl) {
+  const radio = it.k === 'radio';
+  const title = radio ? it.st.name : it.title, sub = radio ? '📻 ' + ([it.st.country, (it.st.tags || []).slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Radio') : it.artist + ' · ' + it.album;
+  const playing = plCtx && plCtx.id === pl.id && plCtx.order[plCtx.i] === i;
+  return '<li class="st' + (playing ? ' now' : '') + '" data-pli="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc((radio ? it.st.img : it.art) || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(title) + '</div><div class="meta">' + esc(sub) + (it.dur ? ' · ' + bcTime(it.dur) : '') + '</div></div>'
+    + '<button class="iconBtn" data-up="' + i + '" title="Move up">▲</button><button class="iconBtn" data-down="' + i + '" title="Move down">▼</button><button class="iconBtn" data-rm="' + i + '" title="Remove">✕</button></li>';
+}
+function plView() {
+  if (plOpen) {
+    const pl = pls.find(p => p.id === plOpen);
+    if (!pl) { plOpen = null; return plView(); }
+    let h = '<div class="bcHead"><button class="btn" id="plBack">‹ Back</button><div class="who"><b>' + esc(pl.name) + '</b> · ' + pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') + '</div>'
+      + '<button class="btn main" id="plPlay">▶ Play</button><button class="btn" id="plShuf">🔀</button><button class="btn" id="plMenuBtn">⋯</button></div>';
+    if (!pl.items.length) h += '<div class="empty">Empty. Add songs with ＋ in a Bandcamp album, from Find songs, or ＋ on the player; add stations with ＋ in search results.</div>';
+    h += '<ul class="list">' + pl.items.map((it, i) => plItemRow(it, i, pl)).join('') + '</ul>';
+    return h;
+  }
+  let h = '<div class="bcHead"><div class="who"><b>Playlists</b> · ' + pls.length + '</div><button class="btn main" id="plNewBtn">＋ New playlist</button></div>';
+  if (!pls.length) h += '<div class="empty">Make a playlist of Bandcamp songs and radio stations. Tap ＋ next to a song or station to add it.</div>';
+  h += '<ul class="list">' + pls.map((p, i) => {
+    const first = p.items.find(it => it.k === 'bc' ? it.art : it.st.img);
+    const art = first ? (first.k === 'bc' ? first.art : first.st.img) : '';
+    const songs = p.items.filter(it => it.k === 'bc').length, sts = p.items.length - songs;
+    return '<li class="st" data-plopen="' + i + '"><img class="art" alt="" src="' + esc(art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div class="body"><div class="name">' + esc(p.name)
+      + '</div><div class="meta">' + [songs ? songs + ' song' + (songs === 1 ? '' : 's') : '', sts ? sts + ' station' + (sts === 1 ? '' : 's') : ''].filter(Boolean).join(' · ') + '</div></div>'
+      + '<button class="iconBtn" data-plplay="' + i + '" title="Play" style="font-size:1.3rem">▶</button></li>';
+  }).join('') + '</ul>';
+  return h;
+}
+function plWire() {
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  const pl = plOpen && pls.find(p => p.id === plOpen);
+  on('plBack', () => { plOpen = null; render(); });
+  on('plNewBtn', () => plAsk([], 'a new playlist'));
+  on('plPlay', () => pl && playPlaylist(pl, 0, false));
+  on('plShuf', () => pl && playPlaylist(pl, 0, true));
+  on('plMenuBtn', () => { $('plMenu').showModal(); });
+}
+els.main.addEventListener('click', e => {
+  if (tab !== 'pl') return;
+  const open = e.target.closest('[data-plopen]'), playB = e.target.closest('[data-plplay]');
+  if (playB) { e.stopPropagation(); playPlaylist(pls[+playB.dataset.plplay], 0, false); return; }
+  if (open) { plOpen = pls[+open.dataset.plopen].id; render(); window.scrollTo(0, 0); return; }
+  const pl = plOpen && pls.find(p => p.id === plOpen);
+  if (!pl) return;
+  const up = e.target.closest('[data-up]'), down = e.target.closest('[data-down]'), rm = e.target.closest('[data-rm]');
+  const move = (i, j) => { if (j < 0 || j >= pl.items.length) return; [pl.items[i], pl.items[j]] = [pl.items[j], pl.items[i]]; plCtx = null; savePls(); render(); };
+  if (up) { move(+up.dataset.up, +up.dataset.up - 1); return; }
+  if (down) { move(+down.dataset.down, +down.dataset.down + 1); return; }
+  if (rm) { pl.items.splice(+rm.dataset.rm, 1); if (plCtx && plCtx.id === pl.id) plCtx = null; savePls(); render(); return; }
+  const row = e.target.closest('[data-pli]');
+  if (row) playPlaylist(pl, +row.dataset.pli, false);
+}, true);
+$('plRename').addEventListener('click', () => {
+  const pl = pls.find(p => p.id === plOpen); $('plMenu').close();
+  const name = pl && prompt('New name for the playlist', pl.name);
+  if (pl && name && name.trim()) { pl.name = name.trim(); savePls(); render(); }
+});
+$('plDelete').addEventListener('click', () => {
+  const pl = pls.find(p => p.id === plOpen); $('plMenu').close();
+  if (!pl || !confirm('Delete the playlist “' + pl.name + '”? The songs stay in your Bandcamp collection.')) return;
+  pls = pls.filter(p => p !== pl); if (plCtx && plCtx.id === pl.id) plCtx = null; plOpen = null; savePls(); render();
+});
+$('plCopy').addEventListener('click', () => {
+  const pl = pls.find(p => p.id === plOpen); $('plMenu').close();
+  if (!pl) return;
+  const text = '# ' + pl.name + '\n\n' + pl.items.map(it => '- ' + (it.k === 'bc' ? it.artist + ' – ' + it.title + ' (' + it.album + ')' : '📻 ' + it.st.name)).join('\n') + '\n';
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showNotice('Playlist copied as text.'));
+});
+$('plMenuClose').addEventListener('click', () => $('plMenu').close());
+
+function playPlaylist(pl, from, shuffle) {
+  if (!pl || !pl.items.length) return;
+  let order = pl.items.map((_, i) => i);
+  if (shuffle) order = bcShuffle(order);
+  else order = order.slice(from).concat(order.slice(0, from));
+  plCtx = { id: pl.id, order, i: 0 };
+  plGo();
+}
+async function plResolve(it) {
+  const tracks = await bcTracks({ url: it.au, title: it.album, artist: it.artist, art: it.art });
+  const want = songKey(it.title);
+  return tracks.find(t => t.url && songKey(t.title) === want && t.n === it.n) || tracks.find(t => t.url && songKey(t.title) === want) || null;
+}
+let plTok = 0;
+async function plGo() {
+  const pl = plCtx && pls.find(p => p.id === plCtx.id);
+  if (!pl) { plCtx = null; return; }
+  const it = pl.items[plCtx.order[plCtx.i]];
+  if (!it) { plCtx = null; showNotice('End of the playlist.'); renderBar(); return; }
+  const tok = ++plTok;
+  if (tab === 'pl') render();
+  if (it.k === 'radio') { playStation(it.st, true); return; }
+  let t = null;
+  try { t = await plResolve(it); } catch (e) {}
+  if (tok !== plTok) return;
+  if (!t) { diag('playlist: no link for ' + it.title + ', skipping'); plStep(1); return; }
+  bcStart([t], 0, false, true);
+}
+function plStep(d) {
+  if (!plCtx) return;
+  const n = plCtx.i + d;
+  if (n < 0) { plCtx.i = 0; plGo(); return; }
+  if (n >= plCtx.order.length) { plCtx = null; showNotice('End of the playlist.'); renderBar(); if (tab === 'pl') render(); return; }
+  plCtx.i = n; plGo();
+}
+
+// ── Find songs: every song in the Bandcamp collection, searchable ──
+// Indexing reads each album's song list once from Bandcamp's small app answer (about 11 KB an album),
+// then keeps it on this device. New albums are added the next time the collection is reloaded and indexed.
+let bcIdx = readJSON('rw_bc_idx', null);   // { at, alb: [{ u, t, a, art }], tr: [[albumIndex, n, title, dur]] }
+let bcIdxBusy = '';
+async function bcIndex() {
+  if (bcIdxBusy) return;
+  if (bcItems.length && !bcItems[0].band) { await bcLoad(); }   // collections loaded before 1.5 don't know the band ids yet
+  // Bandcamp says "too many requests" if asked too fast, so: two albums at a time, a pause after each,
+  // and a longer wait (then try again) when it says slow down. Albums it couldn't read are tried again next time.
+  const old = bcIdx || { alb: [], tr: [], miss: [] };
+  const known = new Map(old.alb.map((a, i) => [a.u, i]));
+  const oldMiss = new Set(old.miss || []);
+  const alb = [], tr = [], miss = [];
+  const todo = [];
+  bcItems.forEach(it => {
+    const ai = alb.length;
+    alb.push({ u: it.url, t: it.title, a: it.artist, art: it.art });
+    const oi = known.get(it.url);
+    if (oi != null && !oldMiss.has(it.url)) old.tr.filter(x => x[0] === oi).forEach(x => tr.push([ai, x[1], x[2], x[3]]));
+    else todo.push([ai, it]);
+  });
+  let done = 0, stop = false;
+  const total = todo.length;
+  const show = () => { bcIdxBusy = 'Finding songs… ' + done + ' / ' + total + ' albums'; if (tab === 'bc' && !bcAlbum) { const el = document.querySelector('.bcIdxMsg'); if (el) el.textContent = bcIdxBusy; else render(); } };
+  show();
+  const save = () => { bcIdx = { at: Date.now(), alb, tr: tr.slice(), miss: miss.concat(todo.map(x => x[1].url)) }; try { localStorage.setItem('rw_bc_idx', JSON.stringify(bcIdx)); } catch (e) { diag('song index too big to keep'); } };
+  const work = async () => {
+    while (todo.length && !stop) {
+      const [ai, it] = todo.shift();
+      let ok = false;
+      for (let tries = 0; tries < 4 && !ok && !stop; tries++) {
+        try {
+          const r = await get('https://bandcamp.com/api/mobile/24/tralbum_details?band_id=' + it.band + '&tralbum_id=' + it.tid + '&tralbum_type=' + (it.type || 'a'), { timeout: 15000 });
+          if (r.status === 429) { diag('bandcamp says slow down: waiting'); await sleep(20000 * (tries + 1)); continue; }
+          const d = JSON.parse(r.text);
+          (d.tracks || []).forEach((t, n) => tr.push([ai, t.track_num || n + 1, t.title, Math.round(t.duration || 0)]));
+          ok = true;
+        } catch (e) { await sleep(1500); }
+      }
+      if (!ok) miss.push(it.url);
+      done++;
+      if (done % 5 === 0) show();
+      if (done % 50 === 0) save();   // keep what's done, in case the app closes
+      await sleep(350);
+    }
+  };
+  await Promise.all([work(), work()]);
+  save();
+  diag('bandcamp index: ' + tr.length + ' songs in ' + alb.length + ' albums' + (bcIdx.miss.length ? ', ' + bcIdx.miss.length + ' to try again' : ''));
+  bcIdxBusy = ''; render();
+}
+function bcSongMatches(f) {
+  if (!bcIdx || !f) return [];
+  const w = f.toLowerCase().split(/\s+/).filter(Boolean);
+  const out = [];
+  for (const x of bcIdx.tr) {
+    const a = bcIdx.alb[x[0]];
+    const hay = (x[2] + ' ' + a.a + ' ' + a.t).toLowerCase();
+    if (w.every(k => hay.includes(k))) { out.push({ k: 'bc', title: x[2], artist: a.a, album: a.t, art: a.art, dur: x[3], n: x[1], au: a.u }); if (out.length >= 200) break; }
+  }
+  return out;
+}
+
+
+// ── Favorites by category ──
+// Each favorite gets a category from its genre tags (or the one you pick with 🏷); the page shows them grouped,
+// A→Z inside each group. "A→Z" and "Newest" are there too.
+const CATS = [
+  ['Halloween & Horror', /hallowe|horror|spook|haunt|scary|creep|ghost|samhain/],
+  ['Dark ambient', /dark ?ambient|ritual|drone|dungeon synth|isolationis/],
+  ['Black metal', /black ?metal|\bbm\b|dsbm/],
+  ['Metal', /metal|doom|thrash|grind|deathcore|sludge/],
+  ['Pagan & Folk', /pagan|folk|celtic|medieval|nordic|viking|druid|witch|neofolk/],
+  ['Goth & Darkwave', /goth|darkwave|dark ?wave|post-?punk|industrial|ebm|coldwave|deathrock|witch ?house/],
+  ['Synthwave & 80s', /synth|retro|outrun|vaporwave|80s|new ?wave/],
+  ['Ambient & Chill', /ambient|chill|lo-?fi|downtempo|relax|meditat|sleep|space/],
+  ['Rock', /rock|punk|grunge|indie|alternative/],
+  ['Electronic', /techno|house|trance|electro|edm|dnb|drum|dubstep|idm|breakbeat/],
+  ['Jazz & Blues', /jazz|blues|swing|soul|funk/],
+  ['Classical & Soundtracks', /classical|orchestra|baroque|opera|soundtrack|score|film|game/],
+  ['News & Talk', /news|talk|sport|public radio|npr|bbc/],
+];
+let favSort = safeGet('rw_favsort') || 'cat';
+function favCat(st) {
+  if (st.cat) return st.cat;
+  const hay = [st.name, ...(st.tags || [])].join(' ').toLowerCase();
+  const hit = CATS.find(([, re]) => re.test(hay));
+  return hit ? hit[0] : 'Other';
+}
+function favView() {
+  let h = '';
+  if (!favs.length) return '<div class="empty">Tap ♡ on a station to keep it here.</div>';
+  h += '<div class="favHead"><div class="who">' + favs.length + ' favorite' + (favs.length === 1 ? '' : 's') + '</div><select id="favSort" aria-label="Order">'
+    + [['cat', 'By category'], ['az', 'A → Z'], ['new', 'Newest first']].map(([v, n]) => '<option value="' + v + '"' + (v === favSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>';
+  const az = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  if (favSort === 'cat') {
+    const groups = new Map();
+    favs.forEach(st => { const c = favCat(st); if (!groups.has(c)) groups.set(c, []); groups.get(c).push(st); });
+    const order = [...CATS.map(c => c[0]), 'Other'];
+    const names = [...groups.keys()].sort((a, b) => (order.indexOf(a) < 0 ? 50 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 50 : order.indexOf(b)) || a.localeCompare(b));
+    names.forEach(c => {
+      const list = groups.get(c).sort(az);
+      h += '<div class="catHead">' + esc(c) + ' <small>· ' + list.length + '</small></div><ul class="list">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+    });
+    return h;
+  }
+  const list = favSort === 'az' ? favs.slice().sort(az) : favs;
+  return h + '<ul class="list" style="margin-top:8px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+}
+let catFor = null;
+function catAsk(st) {
+  catFor = favs.find(f => f.key === st.key);
+  if (!catFor) return;
+  $('catWhat').textContent = catFor.name + ' · now: ' + favCat(catFor);
+  const all = [...new Set([...CATS.map(c => c[0]), ...favs.map(f => f.cat).filter(Boolean), 'Other'])];
+  $('catChoices').innerHTML = all.map(c => '<button class="chip' + (c === favCat(catFor) ? ' pick' : '') + '" data-c="' + esc(c) + '">' + esc(c) + '</button>').join('');
+  $('catNew').value = '';
+  $('catDlg').showModal();
+}
+function catSet(c) {
+  if (!catFor) return;
+  if (c) catFor.cat = c; else delete catFor.cat;
+  safeSet('rw_favs', JSON.stringify(favs));
+  $('catDlg').close(); render();
+}
+$('catChoices').addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) catSet(b.dataset.c); });
+$('catSet').addEventListener('click', () => { const v = $('catNew').value.trim(); if (v) catSet(v); });
+$('catAuto').addEventListener('click', () => catSet(''));
+$('catCancel').addEventListener('click', () => $('catDlg').close());
+$('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('catDlg').close(); });
 
 // ── Share, diag log, version ────────────────────
 $('shareApp').addEventListener('click', e => {

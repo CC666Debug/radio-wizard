@@ -1,7 +1,7 @@
 // Keeps the app's own files on the phone so it opens instantly, even with no signal.
 // The page is fetched fresh when online (so updates show up right away); the saved copy is only used offline.
 // Searches and streams are never cached.
-const CACHE = 'rw-v4';   // bump when cached files change (keep the 'rw-' start: other apps share this web address)
+const CACHE = 'rw-v5';   // bump when cached files change (keep the 'rw-' start: other apps share this web address)
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'favicon.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
