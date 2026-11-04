@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>RadioWizard</title>
+<meta name="description" content="Find any internet radio station. Searches Radio Browser, TuneIn, SHOUTcast, Radio Garden, radio.net, iHeart, laut.fm, Icecast, OnlineRadioBox and SomaFM at once, then plays it here or casts it to Nest speakers.">
+<meta name="theme-color" content="#0e0b1a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e0b1a; --surface: #181329; --surface-2: #221b3a; --line: #352b57;
+    --text: #efeaff; --muted: #a59bc8; --accent: #9b6bff; --accent-2: #5fe3ff; --gold: #ffd36b;
+    --accent-ink: #12082a; --good: #7ee7a8; --bad: #ff6b8a; --radius: 16px;
+    --glow: rgba(155, 107, 255, .35);
+    --bar: 132px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 50% -80px, rgba(155, 107, 255, .25), transparent 360px),
+      radial-gradient(1px 1px at 14% 6%, rgba(255, 255, 255, .55), transparent),
+      radial-gradient(1px 1px at 36% 2%, rgba(255, 255, 255, .35), transparent),
+      radial-gradient(1.5px 1.5px at 62% 9%, rgba(255, 230, 160, .5), transparent),
+      radial-gradient(1px 1px at 81% 4%, rgba(255, 255, 255, .4), transparent),
+      radial-gradient(1px 1px at 92% 12%, rgba(255, 255, 255, .3), transparent);
+    background-repeat: no-repeat; background-attachment: fixed;
+    color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100dvh;
+    padding: 0 16px calc(var(--bar) + max(16px, env(safe-area-inset-bottom)));
+    -webkit-tap-highlight-color: transparent;
+  }
+  button { font: inherit; color: inherit; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 5;
+    margin: 0 -16px; padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+    background: rgba(14, 11, 26, .92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .titleRow { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; flex: none; }
+  h1 {
+    margin: 0; flex: 1; font: 700 1.35rem/1 "Cinzel Decorative", Georgia, serif; letter-spacing: .5px;
+    background: linear-gradient(90deg, var(--gold), var(--accent) 55%, var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .castBtn {
+    display: flex; align-items: center; gap: 6px; max-width: 46%;
+    border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 12px; cursor: pointer;
+  }
+  .castBtn svg { width: 20px; height: 20px; flex: none; }
+  .castBtn span { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .castBtn.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 12px rgba(95, 227, 255, .25); }
+  .castBtn.nudge { animation: nudge 1s ease-in-out infinite alternate; }
+  @keyframes nudge { to { box-shadow: 0 0 18px var(--glow); border-color: var(--accent); } }
+
+  .searchRow { display: flex; gap: 8px; margin-top: 10px; }
+  .search {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px;
+  }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(155, 107, 255, .2); }
+  .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: inherit; padding: 11px 0; }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .iconBtn { background: none; border: 0; cursor: pointer; padding: 6px; color: var(--muted); display: grid; place-items: center; }
+  .iconBtn svg { width: 20px; height: 20px; }
+  .goBtn { border: 0; border-radius: 12px; padding: 0 16px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; }
+
+  .tabs { display: flex; gap: 6px; margin-top: 10px; }
+  .tab {
+    flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 4px;
+    font-size: .9rem; cursor: pointer; color: var(--muted);
+  }
+  .tab[aria-selected="true"] { background: var(--surface-2); color: var(--text); border-color: var(--accent); }
+
+  .status { color: var(--muted); font-size: .85rem; margin: 12px 2px 6px; min-height: 1.2em; }
+  .srcChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  .chip {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 10px;
+    font-size: .8rem; color: var(--muted); cursor: pointer; white-space: nowrap;
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.wait { opacity: .7; }
+  .chip.wait::after { content: " …"; }
+  .chip.fail { border-color: rgba(255, 107, 138, .4); }
+  .chip.pick { border-color: var(--accent); color: var(--text); background: var(--surface-2); }
+
+  .picks { margin-top: 14px; }
+  .picks h2 { font-size: .95rem; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+  .picks .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .picks .chip { font-size: .9rem; padding: 7px 12px; color: var(--text); }
+  .hint { color: var(--muted); font-size: .85rem; margin-top: 16px; line-height: 1.5; }
+
+  ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .st {
+    display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 10px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
+  }
+  .st:active { background: var(--surface-2); }
+  .st.now { border-color: var(--accent); box-shadow: 0 0 14px var(--glow); }
+  .st.checking { opacity: .55; }
+  .st.dead { opacity: .45; }
+  .art {
+    width: 48px; height: 48px; border-radius: 10px; flex: none; object-fit: cover;
+    background: var(--surface-2) url("icon-192.png") center / cover;
+  }
+  .st .body { flex: 1; min-width: 0; }
+  .st .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st .meta { color: var(--muted); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st .srcs { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+  .tag { font-size: .68rem; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .tag.ok { color: var(--good); border-color: rgba(126, 231, 168, .35); }
+  .tag.bad { color: var(--bad); border-color: rgba(255, 107, 138, .35); }
+  .heart { background: none; border: 0; cursor: pointer; padding: 8px; font-size: 1.25rem; line-height: 1; color: var(--muted); }
+  .heart.on { color: #ff5c9a; text-shadow: 0 0 10px rgba(255, 92, 154, .5); }
+  .more { display: block; margin: 12px auto; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+
+  .notice {
+    margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line);
+    font-size: .9rem; display: flex; gap: 10px; align-items: flex-start;
+  }
+  .notice span { flex: 1; }
+  .notice button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 1.1rem; }
+
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    padding: 10px 16px max(12px, env(safe-area-inset-bottom));
+    background: rgba(20, 15, 36, .96); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
+  }
+  .bar .wrap { display: grid; gap: 8px; }
+  .barTop { display: flex; align-items: center; gap: 12px; }
+  .bar .art { width: 52px; height: 52px; }
+  .bar .art.spin { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 16px var(--glow); } }
+  .np { flex: 1; min-width: 0; }
+  .np .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .sub { color: var(--muted); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .sub.live { color: var(--good); }
+  .play {
+    width: 52px; height: 52px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), #6b3dff); color: #fff; display: grid; place-items: center;
+    box-shadow: 0 0 16px var(--glow);
+  }
+  .play svg { width: 24px; height: 24px; }
+  .play:disabled { opacity: .5; cursor: default; }
+  .volRow { display: flex; align-items: center; gap: 10px; }
+  .volRow .iconBtn { padding: 2px; }
+  .volRow .where { font-size: .75rem; color: var(--muted); white-space: nowrap; min-width: 4.5em; text-align: right; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+
+  footer { text-align: center; color: var(--muted); font-size: .78rem; margin: 26px 0 8px; line-height: 1.7; }
+  footer a { color: var(--muted); }
+  #version { cursor: default; user-select: none; }
+
+  dialog {
+    background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 18px;
+    width: min(560px, calc(100vw - 32px)); max-height: 85dvh; padding: 16px;
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog h3 { margin: 0 0 10px; }
+  dialog label.srcOpt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  dialog label.srcOpt small { color: var(--muted); display: block; }
+  dialog label.srcOpt.off { opacity: .5; }
+  dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+  dialog .row button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+  dialog .row button.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  #diagText { width: 100%; height: 50dvh; background: #0a0814; color: #cfc6ee; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
+</style>
+<!-- Visit counter (GoatCounter: free, no cookies). Diag log has a "Don't count me" switch. -->
+<script data-goatcounter="https://cc666debug.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="titleRow">
+      <img class="logo" src="icon-192.png" alt="">
+      <h1>RadioWizard</h1>
+      <button class="castBtn" id="castBtn" type="button" title="Cast to a speaker">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10zm20-7H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        <span id="castLabel">Cast</span>
+      </button>
+    </div>
+    <form class="searchRow" id="searchForm" autocomplete="off">
+      <label class="search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" enterkeyhint="search" placeholder="Station, genre, city…" aria-label="Search radio stations">
+        <button class="iconBtn" id="clearQ" type="button" title="Clear" hidden>✕</button>
+      </label>
+      <button class="goBtn" type="submit">Search</button>
+      <button class="iconBtn" id="srcBtn" type="button" title="Which directories to search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      </button>
+    </form>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="search" aria-selected="true">Search</button>
+      <button class="tab" role="tab" data-tab="favs" aria-selected="false">♥ Favorites</button>
+      <button class="tab" role="tab" data-tab="recent" aria-selected="false">Recent</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden><span id="noticeText"></span><button id="noticeClose" title="Close">✕</button></div>
+  <main id="main"></main>
+
+  <footer>
+    <div>Searches free public radio directories. Stations belong to their owners.</div>
+    <div><a href="#" id="shareApp">Share RadioWizard</a></div>
+    <div id="version"></div>
+  </footer>
+</div>
+
+<div class="bar" id="bar">
+  <div class="wrap">
+    <div class="barTop">
+      <img class="art" id="npArt" src="icon-192.png" alt="">
+      <div class="np">
+        <div class="name" id="npName">Nothing playing</div>
+        <div class="sub" id="npSub">Search for a station and tap it</div>
+      </div>
+      <button class="heart" id="npHeart" title="Favorite" hidden>♡</button>
+      <button class="play" id="playBtn" title="Play / stop" disabled>
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+    </div>
+    <div class="volRow">
+      <button class="iconBtn" id="muteBtn" title="Mute">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path id="muteIcon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+      </button>
+      <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
+      <span class="where" id="where">This device</span>
+    </div>
+  </div>
+</div>
+
+<dialog id="srcDlg">
+  <h3>Directories to search</h3>
+  <div id="srcList"></div>
+  <div class="row"><button type="button" id="srcAll">All</button><button type="button" class="main" id="srcDone">Done</button></div>
+</dialog>
+
+<dialog id="diagDlg">
+  <h3>Diagnostic log</h3>
+  <textarea id="diagText" readonly></textarea>
+  <div class="row">
+    <button type="button" id="gcBtn">Don’t count me</button>
+    <button type="button" id="diagCopy">Copy log</button>
+    <button type="button" class="main" id="diagClose">Close</button>
+  </div>
+</dialog>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+'use strict';
+const VERSION = '1.0.0';
+const $ = id => document.getElementById(id);
+const els = {
+  q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
+  castBtn: $('castBtn'), castLabel: $('castLabel'), playBtn: $('playBtn'), playIcon: $('playIcon'), muteBtn: $('muteBtn'),
+  muteIcon: $('muteIcon'), vol: $('vol'), where: $('where'), npArt: $('npArt'), npName: $('npName'), npSub: $('npSub'), npHeart: $('npHeart'),
+};
+const audio = $('audio');
+
+// ── Small helpers ───────────────────────────────
+const safeGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const readJSON = (k, d) => { try { return JSON.parse(safeGet(k)) || d; } catch (e) { return d; } };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const unent = s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
+const https = u => !u ? '' : u.startsWith('//') ? 'https:' + u : u;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const logLines = [];
+function diag(msg) {
+  const t = new Date();
+  const line = t.toTimeString().slice(0, 8) + '.' + String(t.getMilliseconds()).padStart(3, '0') + '  ' + msg;
+  logLines.push(line);
+  if (logLines.length > 600) logLines.splice(0, logLines.length - 600);
+}
+const NATIVE = !!(window.AndroidCast && window.AndroidCast.httpGet);
+diag('── opened · RadioWizard v' + VERSION + ' · ' + (NATIVE ? 'RadioWizard Android app' : matchMedia('(display-mode: standalone)').matches ? 'app window' : 'browser tab') + ' · ' + navigator.userAgent);
+window.addEventListener('error', e => diag('JS error: ' + e.message + ' @' + (e.lineno || '?')));
+window.addEventListener('unhandledrejection', e => diag('unhandled: ' + (e.reason && e.reason.message || e.reason)));
+
+// ── Web requests ────────────────────────────────
+// In the Android app every request goes through the phone itself (no browser limits), so all directories work.
+// On the website, only the directories that allow it can be searched.
+const httpWait = {};
+let httpNext = 1;
+window.AndroidHttp = (id, r) => { const ok = httpWait[id]; delete httpWait[id]; if (ok) ok(r); };
+function native(method, args) {
+  return new Promise(ok => { const id = httpNext++; httpWait[id] = ok; window.AndroidCast[method](id, JSON.stringify(args)); });
+}
+async function get(url, o = {}) {
+  const timeout = o.timeout || 12000;
+  if (NATIVE) {
+    const r = await native('httpGet', { url, method: o.method || 'GET', body: o.body || null, type: o.type || null, headers: o.headers || {}, follow: o.follow !== false, timeout });
+    if (r.error) throw new Error(r.error);
+    return r;   // { status, text, url, location, contentType }
+  }
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const res = await fetch(url, { method: o.method || 'GET', body: o.body || undefined, headers: o.type ? { 'Content-Type': o.type } : undefined, signal: ctl.signal, redirect: o.follow === false ? 'manual' : 'follow' });
+    return { status: res.status, text: await res.text(), url: res.url, contentType: res.headers.get('content-type') || '' };
+  } finally { clearTimeout(t); }
+}
+async function getJSON(url, o) {
+  const r = await get(url, o);
+  if (r.status >= 400) throw new Error('HTTP ' + r.status);
+  return JSON.parse(r.text);
+}
+
+// ── Directories ─────────────────────────────────
+// Each search gives back stations as { name, img, country, tags, codec, bitrate, pop, src: { src, url | rid } }.
+// url = a stream link to play; rid = an id that has to be turned into a stream link first (resolve).
+const RB_HOSTS = ['de1.api.radio-browser.info', 'de2.api.radio-browser.info', 'fi1.api.radio-browser.info', 'nl1.api.radio-browser.info', 'at1.api.radio-browser.info'];
+let rbHost = null;
+async function rb(path) {
+  const hosts = rbHost ? [rbHost, ...RB_HOSTS.filter(h => h !== rbHost)] : RB_HOSTS;
+  let last;
+  for (const h of hosts) {
+    try { const d = await getJSON('https://' + h + path, { headers: { 'User-Agent': 'RadioWizard/' + VERSION }, timeout: 10000 }); rbHost = h; return d; }
+    catch (e) { last = e; }
+  }
+  throw last;
+}
+const rbMap = s => ({
+  name: s.name.trim(), img: s.favicon, country: s.countrycode, tags: (s.tags || '').split(',').filter(Boolean).slice(0, 4),
+  codec: s.codec, bitrate: s.bitrate, pop: (s.votes || 0) + (s.clickcount || 0), home: s.homepage,
+  src: { src: 'rb', url: s.url_resolved || s.url, rid: s.stationuuid },
+});
+
+let somaList = null;
+const SOURCES = [
+  {
+    id: 'rb', name: 'Radio Browser', web: true, about: 'About 55,000 stations from everywhere',
+    async search(q) {
+      const e = encodeURIComponent(q);
+      const [byName, byTag] = await Promise.all([
+        rb('/json/stations/search?name=' + e + '&hidebroken=true&order=votes&reverse=true&limit=80').catch(() => []),
+        rb('/json/stations/search?tag=' + e + '&hidebroken=true&order=votes&reverse=true&limit=80').catch(() => []),
+      ]);
+      return [...byName, ...byTag].map(rbMap);
+    },
+  },
+  {
+    id: 'tunein', name: 'TuneIn', web: false, about: 'Over 100,000 stations',
+    async search(q) {
+      const d = await getJSON('https://opml.radiotime.com/Search.ashx?render=json&types=station&formats=mp3,aac,ogg,hls&query=' + encodeURIComponent(q));
+      const out = [];
+      const walk = list => (list || []).forEach(x => {
+        if (x.children) walk(x.children);
+        if (x.type === 'audio' && x.guide_id && x.guide_id[0] === 's') out.push({
+          name: x.text, img: x.image, tags: x.subtext ? [x.subtext] : [], codec: x.formats, bitrate: +x.bitrate || 0,
+          pop: +x.reliability || 0, src: { src: 'tunein', rid: x.guide_id },
+        });
+      });
+      walk(d.body);
+      return out;
+    },
+    async resolve(rid) {
+      const d = await getJSON('https://opml.radiotime.com/Tune.ashx?render=json&formats=mp3,aac,ogg,hls&id=' + encodeURIComponent(rid));
+      const list = (d.body || []).filter(x => x.url).sort((a, b) => (b.reliability || 0) - (a.reliability || 0));
+      return list.map(x => x.url);
+    },
+  },
+  {
+    id: 'shout', name: 'SHOUTcast', web: false, about: 'The classic SHOUTcast directory',
+    async search(q) {
+      const d = await getJSON('https://directory.shoutcast.com/Search/UpdateSearch', { method: 'POST', type: 'application/x-www-form-urlencoded', body: 'query=' + encodeURIComponent(q) });
+      return (d || []).map(x => ({
+        name: x.Name, tags: x.Genre ? [x.Genre] : [], codec: x.Format, bitrate: x.Bitrate, pop: x.Listeners || 0,
+        src: { src: 'shout', rid: String(x.ID) },
+      }));
+    },
+    async resolve(rid) { return playlistLinks((await get('https://yp.shoutcast.com/sbin/tunein-station.pls?id=' + rid)).text); },
+  },
+  {
+    id: 'garden', name: 'Radio Garden', web: false, about: 'Stations from the Radio Garden globe',
+    async search(q) {
+      const d = await getJSON('https://radio.garden/api/search?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json', Referer: 'https://radio.garden/' } });
+      return ((d.hits && d.hits.hits) || []).map(h => h._source).filter(s => s && s.type === 'channel' && s.page).map(s => ({
+        name: s.page.title, country: s.code, tags: s.page.subtitle ? [s.page.subtitle] : [],
+        src: { src: 'garden', rid: s.page.url.split('/').pop() },
+      }));
+    },
+    async resolve(rid) {
+      const r = await get('https://radio.garden/api/ara/content/listen/' + rid + '/channel.mp3', { follow: false, headers: { Referer: 'https://radio.garden/' } });
+      return r.location ? [r.location] : [];
+    },
+  },
+  {
+    id: 'radionet', name: 'radio.net', web: false, about: 'radio.net / radio.de, 50,000+ stations',
+    async search(q) {
+      const d = await getJSON('https://prod.radio-api.net/stations/search?count=60&query=' + encodeURIComponent(q));
+      return (d.playables || []).filter(p => p.streams && p.streams.length).map(p => ({
+        name: p.name, img: p.logo300x300 || p.logo100x100, country: p.country, tags: [p.city, ...(p.genres || [])].filter(Boolean).slice(0, 4),
+        codec: p.streams[0].contentFormat, src: { src: 'radionet', url: (p.streams.find(s => s.status === 'VALID') || p.streams[0]).url },
+      }));
+    },
+  },
+  {
+    id: 'iheart', name: 'iHeartRadio', web: true, about: 'US broadcast stations',
+    async search(q) {
+      const d = await getJSON('https://api.iheart.com/api/v3/search/all?maxRows=25&bundle=false&station=true&artist=false&track=false&playlist=false&podcast=false&keywords=' + encodeURIComponent(q));
+      return ((d.results && d.results.stations) || []).map(s => ({
+        name: s.name, img: s.imageUrl, country: 'US', tags: [s.description, s.genre].filter(Boolean),
+        pop: Math.round((s.normRank || 0) * 100), src: { src: 'iheart', rid: String(s.id) },
+      }));
+    },
+    async resolve(rid) {
+      const d = await getJSON('https://api.iheart.com/api/v2/content/liveStations/' + rid);
+      const st = (d.hits && d.hits[0] && d.hits[0].streams) || {};
+      const direct = ['secure_shoutcast_stream', 'shoutcast_stream', 'secure_hls_stream', 'hls_stream'].map(k => st[k]).filter(Boolean);
+      const pls = st.secure_pls_stream || st.pls_stream;
+      if (pls) { try { direct.push(...playlistLinks((await get(pls)).text)); } catch (e) {} }
+      return direct;
+    },
+  },
+  {
+    id: 'laut', name: 'laut.fm', web: true, about: 'Thousands of user-run stations',
+    async search(q) {
+      const d = await getJSON('https://api.laut.fm/search/stations?limit=60&query=' + encodeURIComponent(q));
+      const out = [];
+      (d.results || []).forEach(r => (r.items || []).forEach(i => {
+        const s = i.station;
+        if (s && s.active !== false && s.stream_url) out.push({
+          name: s.display_name || s.name, img: s.images && (s.images.station_120x120 || s.images.station), country: 'DE',
+          tags: (s.genres || []).slice(0, 4), codec: 'MP3', src: { src: 'laut', url: s.stream_url },
+        });
+      }));
+      return out;
+    },
+  },
+  {
+    id: 'ice', name: 'Icecast', web: true, about: 'The Icecast stream directory',
+    async search(q) {
+      // The Icecast directory only finds single words: search the longest one, then keep cards that have all of them.
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      const r = await get('https://dir.xiph.org/search?q=' + encodeURIComponent(words.slice().sort((a, b) => b.length - a.length)[0] || q));
+      const doc = new DOMParser().parseFromString(r.text, 'text/html');
+      return [...doc.querySelectorAll('.card')].map(c => {
+        const play = c.querySelector('a.btn-primary');
+        const url = play && play.getAttribute('href');
+        if (!url || !/^https?:/.test(url)) return null;
+        const title = (c.querySelector('.card-title') || {}).textContent || '';
+        const desc = (c.querySelector('.card-text') || {}).textContent || '';
+        const genres = [...c.querySelectorAll('a[href^="/genres/"]')].map(a => a.textContent.trim()).filter(g => g && g !== 'Unspecified');
+        const codec = ((c.querySelector('a[href^="/codecs/"]') || {}).textContent || '').trim();
+        const listeners = parseInt(((c.querySelector('.card-footer') || {}).textContent || '0'), 10) || 0;
+        if (!words.every(w => (title + ' ' + desc + ' ' + genres.join(' ')).toLowerCase().includes(w))) return null;
+        return { name: title.trim() || desc.trim(), tags: genres.slice(0, 4), codec, pop: listeners, src: { src: 'ice', url } };
+      }).filter(Boolean);
+    },
+  },
+  {
+    id: 'orb', name: 'OnlineRadioBox', web: false, about: 'OnlineRadioBox stations',
+    async search(q) {
+      const r = await get('https://onlineradiobox.com/search?q=' + encodeURIComponent(q));
+      const out = [];
+      const re = /<button[^>]*class="b-play station_play"[^>]*>/g;
+      let m;
+      while ((m = re.exec(r.text))) {
+        const a = k => { const x = m[0].match(new RegExp(' ' + k + '="([^"]*)"')); return x ? unent(x[1]) : ''; };
+        const url = a('stream');
+        if (url) out.push({ name: a('radioName'), img: https(a('radioImg')), country: (a('radioId').split('.')[0] || '').toUpperCase(), codec: a('streamType'), src: { src: 'orb', url } });
+      }
+      return out;
+    },
+  },
+  {
+    id: 'soma', name: 'SomaFM', web: true, about: 'SomaFM’s own channels',
+    async search(q) {
+      if (!somaList) somaList = (await getJSON('https://api.somafm.com/channels.json')).channels || [];
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      return somaList.filter(c => {
+        const hay = (c.title + ' ' + c.genre + ' ' + c.description).toLowerCase();
+        return words.every(w => hay.includes(w));
+      }).map(c => ({
+        name: 'SomaFM ' + c.title, img: c.largeimage || c.image, country: 'US', tags: (c.genre || '').split('|').slice(0, 3),
+        codec: 'MP3', bitrate: 128, pop: +c.listeners || 0, src: { src: 'soma', url: 'https://ice2.somafm.com/' + c.id + '-128-mp3' },
+      }));
+    },
+  },
+];
+const SRC = Object.fromEntries(SOURCES.map(s => [s.id, s]));
+const usable = s => NATIVE || s.web;
+let srcOn = readJSON('rw_srcs', null) || SOURCES.map(s => s.id);
+
+// Playlist files (.pls / .m3u) hold the real stream links.
+function playlistLinks(text) {
+  return String(text || '').split(/\r?\n/).map(l => l.trim())
+    .map(l => (l.match(/^File\d+=(.+)$/i) || [null, l])[1].trim())
+    .filter(l => /^https?:\/\//i.test(l));
+}
+const isPlaylistUrl = u => /\.(pls|m3u)(\?|$)/i.test(u) && !/\.m3u8/i.test(u);
+
+// ── Stations: merging the same station found in several places ─────────
+const normName = n => String(n || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+const normUrl = u => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/[?#].*$/, '').replace(/\/;?$/, '').replace(/:(80|443)\//, '/');
+const srcKey = s => s.src + ':' + (s.url || s.rid);
+
+let results = [];            // merged stations for the current search
+let byUrl = new Map(), byName = new Map();
+// Directories write countries differently ("CA", "Canada"): only two different two-letter codes count as different.
+const sameCountry = (a, b) => { a = String(a || '').toUpperCase(); b = String(b || '').toUpperCase(); return !a || !b || a === b || a.length !== 2 || b.length !== 2; };
+function addStation(x) {
+  if (!x.name || !x.src) return;
+  x.name = String(x.name).trim();
+  const nk = normName(x.name);
+  const uk = x.src.url ? normUrl(x.src.url) : null;
+  let st = (uk && byUrl.get(uk)) || null;
+  if (!st && nk.length >= 3) {
+    st = (byName.get(nk) || []).find(s => sameCountry(s.country, x.country)) || null;
+  }
+  if (st) {
+    if (!st.srcs.some(s => srcKey(s) === srcKey(x.src))) st.srcs.push(x.src);
+    if (!st.img && x.img) st.img = x.img;
+    if (!st.country && x.country) st.country = x.country;
+    if (!st.codec && x.codec) st.codec = x.codec;
+    if (!st.bitrate && x.bitrate) st.bitrate = x.bitrate;
+    st.tags = [...new Set([...st.tags, ...(x.tags || [])])].slice(0, 5);
+    st.pop = Math.max(st.pop, x.pop || 0);
+  } else {
+    st = { key: nk + '|' + (uk || srcKey(x.src)), name: x.name, img: https(x.img || ''), country: x.country || '', tags: (x.tags || []).filter(Boolean).slice(0, 5),
+      codec: x.codec || '', bitrate: x.bitrate || 0, pop: x.pop || 0, srcs: [x.src], check: null };
+    results.push(st);
+    if (nk.length >= 3) { if (!byName.has(nk)) byName.set(nk, []); byName.get(nk).push(st); }
+  }
+  if (uk) byUrl.set(uk, st);
+  return st;
+}
+function score(st, q) {
+  const n = st.name.toLowerCase(), w = q.toLowerCase().trim();
+  let s = 0;
+  if (n === w) s += 100; else if (n.startsWith(w)) s += 60; else if (new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(n)) s += 45; else if (n.includes(w)) s += 30;
+  if (st.tags.some(t => String(t).toLowerCase().includes(w))) s += 20;
+  s += Math.min(st.srcs.length, 4) * 6;
+  s += Math.log10((st.pop || 0) + 1) * 4;
+  if (st.check === 'ok') s += 8;
+  return s;
+}
+
+// ── Testing stations (Android app) ──────────────
+// The phone opens each stream for a moment: only stations that really send sound are listed.
+// play = [{ url, type }] best first, filled in once a station is tested or resolved.
+async function linksFor(src) {
+  if (src.url) return [src.url];
+  const d = SRC[src.src];
+  if (!d || !d.resolve) return [];
+  try { return await d.resolve(src.rid); } catch (e) { diag('resolve ' + src.src + ' ' + src.rid + ' failed: ' + e.message); return []; }
+}
+function typeFor(url, hint) {
+  const t = String(hint || '').toLowerCase(), u = url.toLowerCase();
+  if (/mpegurl|m3u8|hls/.test(t) || /\.m3u8/.test(u)) return 'application/x-mpegURL';
+  if (/aac|mp4a|m4a/.test(t) || /aac/.test(u)) return 'audio/aac';
+  if (/ogg|opus|vorbis/.test(t) || /\.(ogg|opus)(\?|$)/.test(u)) return 'audio/ogg';
+  if (/flac/.test(t)) return 'audio/flac';
+  return 'audio/mpeg';
+}
+async function probeUrl(url, depth = 0) {
+  const r = await native('probe', { url, timeout: 7000 });
+  if (!r.ok) return null;
+  const ct = (r.contentType || '').toLowerCase();
+  const head = r.head || '';
+  if (/^#EXTM3U/.test(head) && /#EXT-X-/.test(head)) return { url: r.url || url, type: 'application/x-mpegURL' };
+  if (/scpls|mpegurl|text\/|x-scpls/.test(ct) || /^\[playlist\]/i.test(head) || /^#EXTM3U/.test(head) || (isPlaylistUrl(url) && !/audio\/(mpeg|aac|ogg)/.test(ct))) {
+    if (depth > 1) return null;
+    for (const l of playlistLinks(head).slice(0, 3)) { const p = await probeUrl(l, depth + 1); if (p) return p; }
+    return null;
+  }
+  return { url: r.url || url, type: typeFor(r.url || url, ct) };
+}
+async function testStation(st) {
+  for (const src of st.srcs) {
+    for (const u of (await linksFor(src)).slice(0, 3)) {
+      const p = await probeUrl(u).catch(() => null);
+      if (p) { p.src = src; return p; }
+    }
+  }
+  return null;
+}
+let checkQueue = [], checking = 0;
+const CHECK_AT_ONCE = 8;
+function queueCheck(list) {
+  if (!NATIVE) return;
+  list.forEach(st => { if (!st.check) { st.check = 'wait'; checkQueue.push(st); } });
+  pumpChecks();
+}
+function pumpChecks() {
+  while (checking < CHECK_AT_ONCE && checkQueue.length) {
+    const st = checkQueue.shift();
+    const tok = searchTok;
+    checking++;
+    st.check = 'checking';
+    testStation(st).then(p => {
+      st.check = p ? 'ok' : 'dead';
+      if (p) st.play = p;
+    }).finally(() => { checking--; if (tok === searchTok) scheduleRender(); pumpChecks(); });
+  }
+}
+
+// ── Searching ───────────────────────────────────
+let searchTok = 0, lastQuery = '', srcState = {}, showDead = false, shown = 40;
+function runSearch(q) {
+  q = q.trim();
+  if (!q) return;
+  lastQuery = q; showDead = false; shown = 40;
+  const tok = ++searchTok;
+  results = []; byUrl = new Map(); byName = new Map(); checkQueue = [];
+  srcState = {};
+  const on = SOURCES.filter(s => srcOn.includes(s.id) && usable(s));
+  diag('search "' + q + '" in ' + on.map(s => s.id).join(', '));
+  on.forEach(s => {
+    srcState[s.id] = { wait: true, n: 0 };
+    const t0 = performance.now();
+    s.search(q).then(list => {
+      if (tok !== searchTok) return;
+      const merged = new Set();
+      list.forEach(x => { const st = addStation(x); if (st) merged.add(st); });
+      srcState[s.id] = { n: list.length };
+      diag(s.id + ': ' + list.length + ' found in ' + ((performance.now() - t0) / 1000).toFixed(1) + 's');
+      sortResults();
+      queueCheck(results.slice(0, 80));
+    }).catch(e => {
+      if (tok !== searchTok) return;
+      srcState[s.id] = { fail: true };
+      diag(s.id + ' FAILED: ' + e.message);
+    }).finally(() => { if (tok === searchTok) scheduleRender(); });
+  });
+  tab = 'search'; setTabs();
+  render();
+}
+function sortResults() {
+  results.forEach(st => st.sc = score(st, lastQuery));
+  results.sort((a, b) => b.sc - a.sc);
+}
+let renderTimer = null;
+function scheduleRender() { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; render(); }, 120); }
+
+// ── Favorites and recent ────────────────────────
+const keep = st => ({ key: st.key, name: st.name, img: st.img, country: st.country, tags: st.tags, codec: st.codec, bitrate: st.bitrate, pop: st.pop, srcs: st.srcs });
+let favs = readJSON('rw_favs', []);
+let recent = readJSON('rw_recent', []);
+const isFav = st => favs.some(f => f.key === st.key);
+function toggleFav(st) {
+  if (isFav(st)) favs = favs.filter(f => f.key !== st.key);
+  else favs.unshift(keep(st));
+  safeSet('rw_favs', JSON.stringify(favs));
+  render(); renderBar();
+}
+function addRecent(st) {
+  recent = [keep(st), ...recent.filter(r => r.key !== st.key)].slice(0, 30);
+  safeSet('rw_recent', JSON.stringify(recent));
+}
+
+// ── Showing it ──────────────────────────────────
+let tab = 'search';
+function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; setTabs(); render(); window.scrollTo(0, 0); }));
+
+const PICKS = ['black metal', 'pagan', 'folk', 'synthwave', 'darkwave', 'halloween', 'gothic', 'metal', 'ambient', 'dark ambient', 'industrial', 'post-punk', 'medieval', 'celtic', 'doom', 'lofi', 'jazz', 'classical', 'blues', '80s'];
+let listed = [];   // stations on screen, by index
+function stationRow(st, i) {
+  const meta = [st.country, st.tags.slice(0, 3).join(', '), st.codec && (st.codec.toUpperCase() + (st.bitrate ? ' ' + st.bitrate : ''))].filter(Boolean).join(' · ');
+  const names = [...new Set(st.srcs.map(s => SRC[s.src] ? SRC[s.src].name : s.src))];
+  const check = st.check === 'ok' ? '<span class="tag ok">✓ plays</span>' : st.check === 'dead' ? '<span class="tag bad">no answer</span>' : (st.check === 'checking' || st.check === 'wait') ? '<span class="tag">testing…</span>' : '';
+  const now = current && current.key === st.key;
+  return '<li class="st' + (now ? ' now' : '') + (st.check === 'checking' || st.check === 'wait' ? ' checking' : '') + (st.check === 'dead' ? ' dead' : '') + '" data-i="' + i + '">'
+    + '<img class="art" loading="lazy" alt="" src="' + esc(st.img || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(st.name) + '</div><div class="meta">' + esc(meta || ' ') + '</div>'
+    + '<div class="srcs">' + check + names.map(n => '<span class="tag">' + esc(n) + '</span>').join('') + '</div></div>'
+    + '<button class="heart' + (isFav(st) ? ' on' : '') + '" data-heart="' + i + '" title="Favorite">' + (isFav(st) ? '♥' : '♡') + '</button></li>';
+}
+function render() {
+  let h = '';
+  listed = [];
+  if (tab === 'search') {
+    if (!lastQuery) {
+      h += '<div class="picks"><h2>Try one</h2><div class="chips">' + PICKS.map(p => '<button class="chip" data-pick="' + esc(p) + '">' + esc(p) + '</button>').join('') + '</div></div>';
+      h += '<div class="hint">RadioWizard searches ' + SOURCES.filter(usable).length + ' radio directories at once' + (NATIVE ? ' and tests every station before it’s listed' : '') + '.'
+        + (NATIVE ? '' : '<br>TuneIn, SHOUTcast, Radio Garden, radio.net and OnlineRadioBox only work in the RadioWizard Android app (they block websites).') + '</div>';
+    } else {
+      const on = SOURCES.filter(s => srcState[s.id]);
+      const waiting = on.filter(s => srcState[s.id].wait).length;
+      const dead = results.filter(st => st.check === 'dead');
+      const live = results.filter(st => st.check !== 'dead');
+      const testing = results.filter(st => st.check === 'wait' || st.check === 'checking').length;
+      h += '<div class="status">' + live.length + ' station' + (live.length === 1 ? '' : 's') + ' for “' + esc(lastQuery) + '”'
+        + (waiting ? ' · still searching ' + waiting : '') + (testing ? ' · testing ' + testing : '') + '</div>';
+      h += '<div class="srcChips">' + on.map(s => {
+        const st = srcState[s.id];
+        return '<span class="chip' + (st.wait ? ' wait' : st.fail ? ' fail' : '') + '">' + esc(s.name) + (st.wait ? '' : st.fail ? ' ✕' : ' <b>' + st.n + '</b>') + '</span>';
+      }).join('') + '</div>';
+      const list = (showDead ? results : live).slice(0, shown);
+      if (!list.length && !waiting) h += '<div class="empty">Nothing found. Try fewer or other words.</div>';
+      h += '<ul class="list">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+      if ((showDead ? results : live).length > shown) h += '<button class="chip more" id="moreBtn">Show more</button>';
+      if (dead.length && !showDead) h += '<button class="chip more" id="deadBtn">Show ' + dead.length + ' that didn’t answer</button>';
+    }
+  } else {
+    const list = tab === 'favs' ? favs : recent;
+    if (!list.length) h += '<div class="empty">' + (tab === 'favs' ? 'Tap ♡ on a station to keep it here.' : 'Stations you play show up here.') + '</div>';
+    h += '<ul class="list" style="margin-top:12px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+  }
+  els.main.innerHTML = h;
+  const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
+  const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
+}
+els.main.addEventListener('click', e => {
+  const pick = e.target.closest('[data-pick]');
+  if (pick) { els.q.value = pick.dataset.pick; els.clearQ.hidden = false; runSearch(pick.dataset.pick); return; }
+  const heart = e.target.closest('[data-heart]');
+  if (heart) { toggleFav(listed[+heart.dataset.heart]); return; }
+  const row = e.target.closest('.st');
+  if (row) playStation(listed[+row.dataset.i]);
+});
+els.form.addEventListener('submit', e => { e.preventDefault(); els.q.blur(); runSearch(els.q.value); });
+els.q.addEventListener('input', () => { els.clearQ.hidden = !els.q.value; });
+els.clearQ.addEventListener('click', () => { els.q.value = ''; els.clearQ.hidden = true; lastQuery = ''; searchTok++; results = []; render(); els.q.focus(); });
+
+// Directory picker
+const srcDlg = $('srcDlg');
+function drawSources() {
+  $('srcList').innerHTML = SOURCES.map(s => '<label class="srcOpt' + (usable(s) ? '' : ' off') + '"><input type="checkbox" data-src="' + s.id + '"'
+    + (srcOn.includes(s.id) ? ' checked' : '') + (usable(s) ? '' : ' disabled') + '><span>' + esc(s.name)
+    + '<small>' + esc(s.about) + (usable(s) ? '' : ' · Android app only') + '</small></span></label>').join('');
+}
+$('srcBtn').addEventListener('click', () => { drawSources(); srcDlg.showModal(); });
+$('srcList').addEventListener('change', e => {
+  const id = e.target.dataset.src;
+  srcOn = e.target.checked ? [...new Set([...srcOn, id])] : srcOn.filter(x => x !== id);
+  safeSet('rw_srcs', JSON.stringify(srcOn));
+});
+$('srcAll').addEventListener('click', () => { srcOn = SOURCES.map(s => s.id); safeSet('rw_srcs', JSON.stringify(srcOn)); drawSources(); });
+$('srcDone').addEventListener('click', () => { srcDlg.close(); if (lastQuery) runSearch(lastQuery); });
+srcDlg.addEventListener('click', e => { if (e.target === srcDlg) srcDlg.close(); });
+
+// ── Notices ─────────────────────────────────────
+function showNotice(msg) { els.noticeText.textContent = msg; els.notice.hidden = false; }
+function hideNotice() { els.notice.hidden = true; }
+$('noticeClose').addEventListener('click', hideNotice);
+
+// ── Playing ─────────────────────────────────────
+// current = the station chosen (playing here or on the speaker). streamsFor() gives every link to try, best first.
+let current = readJSON('rw_current', null);
+let here = null;      // { st, links, i } while playing on this device
+let hereState = 'idle';   // idle | starting | playing
+async function streamsFor(st) {
+  const out = [];
+  if (st.play && st.play.url) out.push({ url: st.play.url, type: st.play.type });
+  for (const src of st.srcs) {
+    for (let u of await linksFor(src)) {
+      if (!NATIVE && isPlaylistUrl(u)) { try { const l = playlistLinks((await get(u)).text); if (l.length) u = l[0]; } catch (e) {} }
+      if (!out.some(o => o.url === u)) out.push({ url: u, type: typeFor(u, st.codec) });
+    }
+  }
+  return out;
+}
+// Old http:// streams at a bare IP: the website can only reach them by name (sslip.io turns 1.2.3.4 into 1-2-3-4.sslip.io).
+const hereSrc = u => location.protocol === 'https:' ? u.replace(/^http:\/\/(\d+)\.(\d+)\.(\d+)\.(\d+)(?=[:/]|$)/, 'http://$1-$2-$3-$4.sslip.io') : u;
+
+function choose(st) {
+  current = keep(st);
+  if (st.play) current.play = st.play;
+  safeSet('rw_current', JSON.stringify(current));
+  addRecent(st);
+  const rbSrc = st.srcs.find(s => s.src === 'rb' && s.rid);
+  if (rbSrc) rb('/json/url/' + rbSrc.rid).catch(() => {});   // counts the play for Radio Browser
+}
+function playStation(st) {
+  if (!st) return;
+  hideNotice();
+  choose(st);
+  if (castConnected()) { stopHere(); loadOnSpeaker(current); }
+  else playHere(current);
+  render(); renderBar();
+}
+let hereTok = 0;
+async function playHere(st) {
+  const tok = ++hereTok;
+  hereState = 'starting'; renderBar();
+  const links = await streamsFor(st);
+  if (tok !== hereTok) return;
+  here = { st, links, i: -1 };
+  diag('play here: ' + st.name + ' · ' + links.length + ' link(s)');
+  tryNextHere(tok);
+}
+function tryNextHere(tok) {
+  if (tok !== hereTok || !here) return;
+  here.i++;
+  const l = here.links[here.i];
+  if (!l) {
+    diag('nothing played for ' + here.st.name);
+    const blocked = !NATIVE && here.links.some(x => x.url.startsWith('http:'));
+    showNotice(here.st.name + ' isn’t playing right now.' + (blocked ? ' (Its link is old-style http://, which browsers block; the Android app or casting plays it.)' : ' Try another station.'));
+    stopHere(); return;
+  }
+  diag('trying ' + l.url);
+  audio.src = hereSrc(l.url);
+  audio.play().catch(err => diag('play() refused: ' + err.message));
+  here.timer && clearTimeout(here.timer);
+  here.timer = setTimeout(() => { if (tok === hereTok && hereState === 'starting') { diag('no sound after 15s'); tryNextHere(tok); } }, 15000);
+}
+audio.addEventListener('playing', () => { if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); renderBar(); setMedia(); });
+audio.addEventListener('error', () => { if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); tryNextHere(hereTok); });
+audio.addEventListener('stalled', () => diag('stalled'));
+audio.addEventListener('pause', () => renderBar());
+function rememberWorking(st, link) {
+  if (!link) return;
+  const p = { url: link.url, type: link.type };
+  // TuneIn/iHeart links carry a key that runs out, so only steady links are kept for next time.
+  const steady = st.srcs.some(s => s.url && normUrl(s.url) === normUrl(link.url)) || !st.srcs.some(s => s.src === 'tunein' || s.src === 'iheart');
+  if (!steady) return;
+  if (current && current.key === st.key) { current.play = p; safeSet('rw_current', JSON.stringify(current)); }
+  [favs, recent].forEach((list, n) => { const f = list.find(x => x.key === st.key); if (f) { f.play = p; safeSet(n ? 'rw_recent' : 'rw_favs', JSON.stringify(list)); } });
+}
+function stopHere() {
+  hereTok++;
+  if (here && here.timer) clearTimeout(here.timer);
+  here = null; hereState = 'idle';
+  audio.pause(); audio.removeAttribute('src'); audio.load();
+  renderBar();
+}
+
+// ── Casting (Google Cast) ───────────────────────
+let ctx = null, player = null, ctrl = null;
+let speakerLoading = null, speakerStation = null, speakerRetries = 0, carryOver = null;
+let castListOpen = false;
+window.__onGCastApiAvailable = function (available) {
+  diag('cast library ready: ' + (available && window.cast && cast.framework ? 'yes' : 'NO'));
+  if (!available || !window.cast || !cast.framework) { els.castLabel.textContent = 'No cast'; return; }
+  ctx = cast.framework.CastContext.getInstance();
+  ctx.setOptions({ receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID, autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED, resumeSavedSession: true });
+  player = new cast.framework.RemotePlayer();
+  ctrl = new cast.framework.RemotePlayerController(player);
+  ctrl.addEventListener(cast.framework.RemotePlayerEventType.ANY_CHANGE, () => { onSpeakerState(); renderBar(); });
+  ctx.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, e => { diag('cast state: ' + e.castState); renderBar(); });
+  ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, e => {
+    const S = cast.framework.SessionState;
+    diag('session: ' + e.sessionState + (e.errorCode ? ' · error ' + e.errorCode : '') + (e.session ? ' · ' + e.session.getCastDevice().friendlyName : ''));
+    if (e.sessionState === S.SESSION_STARTED) {
+      els.castBtn.classList.remove('nudge');
+      // A speaker was picked: what the phone was playing moves over to it.
+      if (here && current) { stopHere(); loadOnSpeaker(current); }
+    }
+    if (e.sessionState === S.SESSION_RESUMED) speakerStation = current;
+    if (e.sessionState === S.SESSION_START_FAILED) showNotice('The speaker didn’t accept the connection. Try again.');
+    if (e.sessionState === S.SESSION_ENDING) carryOver = castActive() && !speakerPaused() && current ? current : null;
+    if (e.sessionState === S.SESSION_ENDED) {
+      speakerLoading = speakerStation = null;
+      if (carryOver) { const s = carryOver; carryOver = null; playHere(s); }
+    }
+    renderBar();
+  });
+  renderBar();
+};
+let speakerLinks = null;
+async function loadOnSpeaker(st, links) {
+  const session = ctx && ctx.getCurrentSession();
+  if (!session) return;
+  speakerLoading = st; renderBar();
+  if (!links) { links = await streamsFor(st); links.i = 0; }
+  if (speakerLoading !== st) return;
+  speakerLinks = links;
+  const l = links[links.i];
+  if (!l) { speakerLoading = null; showNotice(st.name + ' won’t play on the speaker. Try another station.'); renderBar(); return; }
+  const info = new chrome.cast.media.MediaInfo(l.url, l.type);
+  info.streamType = chrome.cast.media.StreamType.LIVE;
+  const md = new chrome.cast.media.GenericMediaMetadata();
+  md.title = st.name;
+  md.subtitle = 'RadioWizard';
+  md.images = [new chrome.cast.Image(st.img && st.img.startsWith('https:') ? st.img : new URL('icon-512.png', location.href).href)];
+  info.metadata = md;
+  const req = new chrome.cast.media.LoadRequest(info);
+  req.autoplay = true;
+  const t = performance.now();
+  diag('sending ' + st.name + ' to ' + session.getCastDevice().friendlyName + ' · ' + l.url);
+  safeSet('rw_cast', l.url);
+  kickStart();
+  session.loadMedia(req).then(() => {
+    diag('speaker accepted after ' + ((performance.now() - t) / 1000).toFixed(2) + 's'); kickStart();
+  }).catch(err => {
+    diag('speaker REFUSED · ' + err);
+    if (speakerLoading !== st) return;
+    links.i++; loadOnSpeaker(st, links);
+  });
+}
+// The speaker's standard player often sits "buffering" before the sound starts; a quick pause + play gets it going.
+const NUDGE_AFTER = 500, NUDGE_WINDOW = 60000;
+let nudgeUntil = 0, nudges = 0, nudgeTimer = null;
+function kickStart() { nudgeUntil = Date.now() + NUDGE_WINDOW; nudges = 0; watchStall(); }
+function watchStall() {
+  clearTimeout(nudgeTimer);
+  const PS = chrome.cast.media.PlayerState;
+  if (!player || Date.now() > nudgeUntil || nudges >= 4 || player.playerState !== PS.BUFFERING) return;
+  nudgeTimer = setTimeout(() => {
+    const session = ctx.getCurrentSession();
+    const media = session && session.getMediaSession();
+    if (!media || player.playerState !== PS.BUFFERING) return;
+    nudges++;
+    diag('nudge ' + nudges + ': speaker stalled buffering, pause + play');
+    const done = () => renderBar();
+    media.pause(new chrome.cast.media.PauseRequest(), () => media.play(new chrome.cast.media.PlayRequest(), done, done), done);
+  }, NUDGE_AFTER);
+}
+let lastSpeakerState = null;
+function onSpeakerState() {
+  const PS = chrome.cast.media.PlayerState;
+  if (player.playerState === lastSpeakerState) return;
+  const session = ctx.getCurrentSession();
+  const media = session && session.getMediaSession && session.getMediaSession();
+  diag('speaker player: ' + (player.playerState || 'none') + (player.playerState === PS.IDLE && media && media.idleReason ? ' (' + media.idleReason + ')' : ''));
+  watchStall();
+  lastSpeakerState = player.playerState;
+  if (player.playerState === PS.PLAYING) {
+    if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
+    speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0;
+    return;
+  }
+  if (player.playerState !== PS.IDLE) return;
+  const IR = chrome.cast.media.IdleReason, why = media && media.idleReason;
+  if (speakerLoading && why === IR.ERROR) {   // this link doesn't play on the speaker: try the next one
+    const st = speakerLoading;
+    if (speakerLinks) { speakerLinks.i++; loadOnSpeaker(st, speakerLinks); }
+    return;
+  }
+  if (!speakerStation) return;
+  const dropped = why === IR.ERROR || why === IR.FINISHED;
+  if (!dropped || speakerRetries >= 4) { speakerStation = null; return; }
+  speakerRetries++;   // live radio never "finishes": the stream dropped, so start it again
+  const st = speakerStation;
+  setTimeout(() => { if (castConnected() && !castActive()) loadOnSpeaker(st); }, 2000 * speakerRetries);
+}
+const castConnected = () => !!(ctx && ctx.getCurrentSession());
+const castActive = () => !!ctx && !!player && player.isMediaLoaded && !!player.playerState && player.playerState !== chrome.cast.media.PlayerState.IDLE;
+const speakerPaused = () => !!player && player.playerState === chrome.cast.media.PlayerState.PAUSED;
+
+els.castBtn.addEventListener('click', () => {
+  if (!ctx) { showNotice('Casting needs Chrome (Android or computer) or the RadioWizard Android app. Listening on this device works everywhere.'); return; }
+  diag('cast button tapped (state ' + ctx.getCastState() + ')');
+  castListOpen = true;
+  ctx.requestSession().then(() => { castListOpen = false; diag('speaker picked'); }, err => { castListOpen = false; diag('speaker list closed · ' + err); });
+});
+
+// ── Controls ────────────────────────────────────
+els.playBtn.addEventListener('click', () => {
+  if (castConnected()) {
+    if (castActive()) { speakerPaused() ? ctrl.playOrPause() : ctrl.stop(); speakerStation = null; }
+    else if (current) loadOnSpeaker(current);
+  } else if (here) stopHere();
+  else if (current) playHere(current);
+  renderBar();
+});
+els.npHeart.addEventListener('click', () => { if (current) toggleFav(current); });
+els.muteBtn.addEventListener('click', () => {
+  if (castConnected()) ctrl.muteOrUnmute();
+  else { audio.muted = !audio.muted; renderBar(); }
+});
+els.vol.value = safeGet('rw_vol') || 80;
+audio.volume = els.vol.value / 100;
+els.vol.addEventListener('input', () => {
+  if (castConnected() && player) { player.volumeLevel = els.vol.value / 100; ctrl.setVolumeLevel(); }
+  else { audio.volume = els.vol.value / 100; safeSet('rw_vol', els.vol.value); }
+});
+
+function renderBar() {
+  const cast = castConnected();
+  const dev = cast ? ctx.getCurrentSession().getCastDevice().friendlyName : '';
+  els.castBtn.classList.toggle('on', cast);
+  els.castLabel.textContent = cast ? dev : ctx ? 'Cast' : els.castLabel.textContent;
+  els.where.textContent = cast ? 'Speaker' : 'This device';
+  const st = current;
+  els.npName.textContent = st ? st.name : 'Nothing playing';
+  els.npArt.src = st && st.img ? st.img : 'icon-192.png';
+  els.npArt.onerror = () => { els.npArt.onerror = null; els.npArt.src = 'icon-192.png'; };
+  els.npHeart.hidden = !st;
+  if (st) { els.npHeart.textContent = isFav(st) ? '♥' : '♡'; els.npHeart.classList.toggle('on', isFav(st)); }
+  let sub = 'Search for a station and tap it', live = false, busy = false, playing = false;
+  if (cast) {
+    const PS = chrome.cast.media.PlayerState;
+    if (speakerLoading) { sub = 'Starting on ' + dev + '…'; busy = true; }
+    else if (castActive() && player.playerState === PS.BUFFERING) { sub = 'Buffering on ' + dev + '…'; busy = true; playing = true; }
+    else if (castActive() && speakerPaused()) sub = 'Paused on ' + dev;
+    else if (castActive()) { sub = 'Live on ' + dev; live = true; playing = true; }
+    else sub = st ? 'Tap play to start on ' + dev : 'Connected to ' + dev;
+    if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
+  } else if (st) {
+    if (hereState === 'starting') { sub = 'Tuning in…'; busy = true; playing = true; }
+    else if (hereState === 'playing' && !audio.paused) { sub = 'Live' + (st.country ? ' · ' + st.country : ''); live = true; playing = true; }
+    else sub = [st.country, st.tags.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Tap play';
+    if (document.activeElement !== els.vol) els.vol.value = Math.round(audio.volume * 100);
+  }
+  els.npSub.textContent = sub;
+  els.npSub.classList.toggle('live', live);
+  els.npArt.classList.toggle('spin', busy);
+  els.playBtn.disabled = !st && !castActive();
+  els.playIcon.innerHTML = playing ? '<path d="M6 6h12v12H6z"/>' : '<path d="M8 5v14l11-7z"/>';
+  const muted = cast ? player && player.isMuted : audio.muted;
+  els.muteIcon.setAttribute('d', muted ? 'M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z' : 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z');
+}
+
+// Lock screen / headset controls while playing on this device.
+function setMedia() {
+  if (!('mediaSession' in navigator) || !current) return;
+  navigator.mediaSession.metadata = new MediaMetadata({ title: current.name, artist: 'RadioWizard', artwork: [{ src: current.img || new URL('icon-512.png', location.href).href, sizes: '512x512' }] });
+}
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play', () => { if (current && !here) playHere(current); else audio.play(); });
+  navigator.mediaSession.setActionHandler('pause', () => stopHere());
+  navigator.mediaSession.setActionHandler('stop', () => stopHere());
+}
+
+// ── Share, diag log, version ────────────────────
+$('shareApp').addEventListener('click', e => {
+  e.preventDefault();
+  const url = 'https://cc666debug.github.io/radio-wizard/', text = 'RadioWizard: find any radio station and cast it to your speakers.';
+  if (window.AndroidCast && window.AndroidCast.shareText) { window.AndroidCast.shareText('RadioWizard', text + '\n' + url); return; }
+  if (navigator.share) navigator.share({ title: 'RadioWizard', text, url }).catch(() => {});
+  else navigator.clipboard.writeText(url).then(() => showNotice('Link copied.'));
+});
+const ver = $('version');
+ver.textContent = 'v' + VERSION;
+let taps = 0, tapTimer = null;
+ver.addEventListener('click', () => {
+  taps++; clearTimeout(tapTimer); tapTimer = setTimeout(() => taps = 0, 1500);
+  if (taps >= 5) { taps = 0; openDiag(); }
+});
+const diagDlg = $('diagDlg');
+function gcLabel() { $('gcBtn').textContent = safeGet('skipgc') === 't' ? 'Count me' : 'Don’t count me'; }
+function openDiag() { $('diagText').value = logLines.join('\n'); gcLabel(); diagDlg.showModal(); }
+$('diagCopy').addEventListener('click', () => {
+  const t = $('diagText'); t.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).catch(() => document.execCommand('copy'));
+  $('diagCopy').textContent = 'Copied';
+  setTimeout(() => $('diagCopy').textContent = 'Copy log', 1500);
+});
+$('diagClose').addEventListener('click', () => diagDlg.close());
+$('gcBtn').addEventListener('click', () => { if (safeGet('skipgc') === 't') localStorage.removeItem('skipgc'); else safeSet('skipgc', 't'); gcLabel(); });
+
+// ── Start ───────────────────────────────────────
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+render(); renderBar();
+const cs = document.createElement('script');
+// Inside the Android app, casting goes through Android's own Google Cast service instead.
+cs.src = window.AndroidCast ? 'android-cast.js' : 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+cs.onerror = () => { diag('cast library failed to load'); els.castLabel.textContent = 'No cast'; };
+document.head.appendChild(cs);
+</script>
+</body>
+</html>
