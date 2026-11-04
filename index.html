@@ -58,9 +58,10 @@
   button { font: inherit; color: inherit; }
   .wrap { max-width: 720px; margin: 0 auto; }
 
+  /* Fixed (not sticky) so shrinking it to the mini player never moves the list you're reading; #topSpace holds its room. */
   header.top {
-    position: sticky; top: 0; z-index: 5;
-    margin: 0 -16px; padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5; max-width: 752px; margin: 0 auto; box-sizing: border-box;
+    view-transition-name: rw-top; padding: max(10px, env(safe-area-inset-top)) 16px 10px;
     background: var(--top-bg); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }
@@ -198,7 +199,14 @@
   header.top.mini .prog { position: absolute; left: 0; right: 0; bottom: 0; gap: 0; }
   header.top.mini .pTrack { height: 2px; border-radius: 0; background: transparent; }
   html { overflow-anchor: none; }
-  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; mix-blend-mode: normal; }
+  /* Only the player bar moves (it glides from full to mini); the list stays perfectly still. */
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+  ::view-transition-group(rw-top) { animation-duration: .3s; animation-timing-function: cubic-bezier(.25, .8, .25, 1); }
+  ::view-transition-image-pair(rw-top) { overflow: hidden; }
+  ::view-transition-old(rw-top), ::view-transition-new(rw-top) { height: 100%; object-fit: none; object-position: top; animation-duration: .3s; }
+  .clearWrap { position: relative; }
+  .clearWrap .field { padding-right: 40px; }
+  .clearWrap .clearX { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--muted); font-size: 1.05rem; padding: 6px 9px; cursor: pointer; }
   .toTop { position: fixed; right: 16px; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 6; width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line);
     background: var(--surface-2); color: var(--text); font-size: 1.3rem; cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, .35); }
   input[type=range] { flex: 1; accent-color: var(--accent); }
@@ -273,6 +281,7 @@
   #diagText { width: 100%; height: 50dvh; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
 </style>
 <!-- Visit counter (GoatCounter: free, no cookies). Diag log has a "Don't count me" switch. -->
+<script>if (window.__TAURI_INTERNALS__) window.goatcounter = { path: '/radio-wizard-desktop', allow_local: true };</script>
 <script data-goatcounter="https://cc666debug.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </head>
 <body>
@@ -336,6 +345,7 @@
       <button class="tab" role="tab" data-tab="pl" aria-selected="false">Playlists</button>
     </div>
   </header>
+  <div id="topSpace"></div>
 
   <div class="notice" id="notice" hidden><span id="noticeText"></span><button id="noticeClose" title="Close">✕</button></div>
   <main id="main"></main>
@@ -417,7 +427,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1412,7 +1422,8 @@ function bcView() {
   h += '<div class="bcHead"><div class="who"><b>' + esc(bcUser || 'Bandcamp') + '</b> · ' + (bcBusy ? esc(bcBusy) : bcItems.length + ' items') + '</div>'
     + '<button class="btn main" id="bcShufAll">🔀 Shuffle all</button>' + (bcIdx && !(bcIdx.miss && bcIdx.miss.length) && bcIdx.alb.length >= bcItems.length ? '' : '<button class="btn" id="bcFind" title="Make every song searchable (about 9 MB the first time)">🔎 ' + (bcIdx ? 'Finish finding songs' : 'Find songs') + '</button>') + '<button class="btn" id="bcMenu">⋯</button></div>'
     + (bcIdxBusy ? '<div class="hint bcIdxMsg" style="margin:0 0 8px">' + esc(bcIdxBusy) + '</div>' : '');
-  h += '<input class="field" id="bcFilter" placeholder="' + (bcIdx ? 'Find a song, album or artist (' + bcIdx.tr.length + ' songs)' : 'Filter by album or artist') + '" value="' + esc(bcFilter) + '" autocomplete="off">';
+  h += '<div class="clearWrap"><input class="field" id="bcFilter" placeholder="' + (bcIdx ? 'Find a song, album or artist (' + bcIdx.tr.length + ' songs)' : 'Filter by album or artist') + '" value="' + esc(bcFilter) + '" autocomplete="off">'
+    + '<button type="button" class="clearX" id="bcFilterX" title="Clear"' + (bcFilter ? '' : ' hidden') + '>✕</button></div>';
   h += '<ul class="list" id="bcList" style="margin-top:10px">' + bcListHtml() + '</ul>';
   return h;
 }
@@ -1443,7 +1454,8 @@ function bcWire() {
   on('bcMenu', () => $('bcDlg').showModal());
   on('bcMoreBtn', () => { bcMore += 150; $('bcList').innerHTML = bcListHtml(); bcWire(); });
   const f = $('bcFilter');
-  if (f) f.oninput = () => { bcFilter = f.value; bcMore = 150; $('bcList').innerHTML = bcListHtml(); bcWire(); };
+  if (f) f.oninput = () => { bcFilter = f.value; bcMore = 150; $('bcFilterX').hidden = !bcFilter; $('bcList').innerHTML = bcListHtml(); bcWire(); };
+  on('bcFilterX', () => { bcFilter = ''; bcMore = 150; if (f) { f.value = ''; f.focus(); } $('bcFilterX').hidden = true; $('bcList').innerHTML = bcListHtml(); bcWire(); });
 }
 window.onBandcampLogin = ok => {
   diag('bandcamp sign-in: ' + (ok ? 'yes' : 'closed'));
@@ -1886,17 +1898,12 @@ function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.
 {
   const topEl = document.querySelector('header.top'), mainEl = document.querySelector('main'), root = document.documentElement;
   let mini = false, vt = null;
-  const apply = on => {
-    if (on) {
-      const h = topEl.offsetHeight;
-      mainEl.style.paddingBottom = h + 'px';
-      topEl.classList.add('mini');
-      const d = Math.max(0, h - topEl.offsetHeight);
-      mainEl.style.paddingBottom = d + 'px';
-    } else {
-      topEl.classList.remove('mini'); mainEl.style.paddingBottom = '';
-    }
-  };
+  // The header floats over the page; #topSpace keeps the full player's height in the page, so going mini or back
+  // never moves the list, never changes the page length, and only uncovers or covers rows behind the bar.
+  const space = $('topSpace');
+  const fit = () => { if (!mini) space.style.height = topEl.offsetHeight + 'px'; };
+  new ResizeObserver(fit).observe(topEl); fit();
+  const apply = on => topEl.classList.toggle('mini', on);
   const setMini = on => {
     if (on === mini) return;
     mini = on;
