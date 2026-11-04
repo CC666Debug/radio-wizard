@@ -703,6 +703,7 @@ fn main() {
     let devices: Devices = Arc::new(Mutex::new(HashMap::new()));
     discover(devices.clone());
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
             http_get, probe, icy, bandcamp_login, bandcamp_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end

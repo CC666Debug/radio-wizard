@@ -1,6 +1,6 @@
 [package]
 name = "radio-wizard"
-version = "1.5.0"
+version = "1.5.1"
 description = "RadioWizard: find any radio station, play your Bandcamp collection, cast to Nest speakers"
 edition = "2021"
 
@@ -17,6 +17,8 @@ ureq = { version = "2", default-features = false, features = ["native-tls"] }
 native-tls = "0.2"
 # finding Google Cast speakers on the home network
 mdns-sd = "0.21"
+# remembers the window's size and spot between runs
+tauri-plugin-window-state = "2"
 
 # small and fast
 [profile.release]

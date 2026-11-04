@@ -157,6 +157,7 @@
   .player .art.spin { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 16px var(--glow); } }
   .np { flex: 1; min-width: 0; }
+  .player > * { min-width: 0; }
   .np .label { display: flex; gap: 8px; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .np .label .state.live { color: var(--good); }
   .np .label .state.live::before { content: "● "; }
@@ -414,7 +415,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1232,16 +1233,17 @@ els.vol.addEventListener('input', () => {
   else { audio.volume = els.vol.value / 100; safeSet('rw_vol', els.vol.value); }
   $('volNum').textContent = els.vol.value + '%';
 });
-// The mouse wheel turns the volume up and down over the volume slider or the volume button (5% a notch).
+// The mouse wheel anywhere over the player turns the volume up and down, 5% a notch (like the casters).
 function wheelVolume(e) {
+  if (!e.deltaY) return;
   e.preventDefault();
   const v = Math.max(0, Math.min(100, (+els.vol.value) + (e.deltaY < 0 ? 5 : -5)));
   if (v === +els.vol.value) return;
   els.vol.value = v;
   els.vol.dispatchEvent(new Event('input'));
 }
-els.vol.addEventListener('wheel', wheelVolume, { passive: false });
-els.muteBtn.addEventListener('wheel', wheelVolume, { passive: false });
+$('bar').addEventListener('wheel', wheelVolume, { passive: false });
+els.muteBtn.title = 'Mute' + (matchMedia('(pointer: fine)').matches ? ' · scroll over the player for volume' : '');
 
 function renderBar() {
   const cast = castConnected();
@@ -1627,7 +1629,11 @@ let saved = readJSON('rw_saved', []);     // [{ song, station, at }]
 const songKey = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 function cleanTitle(t) {
-  t = String(t || '').replace(/\s+/g, ' ').trim();
+  t = String(t || '');
+  // iHeart streams send 'Artist - text="Song" song_spot="M" length=...': keep just artist and song.
+  const ih = t.match(/^(.*?)\s*-?\s*text="([^"]*)"/);
+  if (ih) t = (ih[1].trim() ? ih[1].trim() + ' - ' : '') + ih[2];
+  t = t.replace(/\s+/g, ' ').trim();
   if (!t || t.length < 3 || /^(-|–|unknown|n\/a|null|undefined|live|on air)$/i.test(t)) return '';
   return t.replace(/\s+-\s+/, ' – ');
 }
