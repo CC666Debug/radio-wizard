@@ -1,0 +1,38 @@
+# Every push builds RadioWizard for Windows and puts it on the Releases page as "latest".
+# The website itself is served by GitHub Pages straight from main; this only makes the installer.
+# Free on public repos; switch it off any time under the repo's Actions tab.
+name: Build Windows app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop }
+      - name: The page goes inside the app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory desktop\dist | Out-Null
+          Copy-Item index.html, android-cast.js, manifest.webmanifest, favicon.png, icon-192.png, icon-512.png desktop\dist\
+      - name: Build
+        working-directory: desktop
+        run: npm install && npx tauri build
+      - name: Put it on the Releases page
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Copy-Item (Get-ChildItem desktop\target\release\bundle\nsis\*-setup.exe | Select-Object -First 1).FullName RadioWizard-Setup.exe
+          $ver = (Get-Content desktop\tauri.conf.json | ConvertFrom-Json).version
+          gh release delete latest --yes --cleanup-tag 2>$null; $global:LASTEXITCODE = 0
+          gh release create latest RadioWizard-Setup.exe --title "RadioWizard for Windows $ver" --notes "Built from $(git rev-parse --short HEAD). Download RadioWizard-Setup.exe and run it (installs for you only, no admin)."

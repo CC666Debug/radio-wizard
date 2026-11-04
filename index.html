@@ -292,7 +292,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -318,7 +318,7 @@ function diag(msg) {
   if (logLines.length > 600) logLines.splice(0, logLines.length - 600);
 }
 const NATIVE = !!(window.AndroidCast && window.AndroidCast.httpGet);
-diag('── opened · RadioWizard v' + VERSION + ' · ' + (NATIVE ? 'RadioWizard Android app' : matchMedia('(display-mode: standalone)').matches ? 'app window' : 'browser tab') + ' · ' + navigator.userAgent);
+diag('── opened · RadioWizard v' + VERSION + ' · ' + (NATIVE ? (window.AndroidCast.desktop ? 'RadioWizard Windows app' : 'RadioWizard Android app') : matchMedia('(display-mode: standalone)').matches ? 'app window' : 'browser tab') + ' · ' + navigator.userAgent);
 window.addEventListener('error', e => diag('JS error: ' + e.message + ' @' + (e.lineno || '?')));
 window.addEventListener('unhandledrejection', e => diag('unhandled: ' + (e.reason && e.reason.message || e.reason)));
 
@@ -720,7 +720,7 @@ function render() {
     if (!lastQuery) {
       h += '<div class="picks"><h2>Try one</h2><div class="chips">' + PICKS.map(p => '<button class="chip" data-pick="' + esc(p) + '">' + esc(p) + '</button>').join('') + '</div></div>';
       h += '<div class="hint">RadioWizard searches ' + SOURCES.filter(usable).length + ' radio directories at once' + (NATIVE ? ' and tests every station before it’s listed' : '') + '.'
-        + (NATIVE ? '' : '<br>TuneIn, SHOUTcast, Radio Garden, radio.net and OnlineRadioBox only work in the RadioWizard Android app (they block websites).') + '</div>';
+        + (NATIVE ? '' : '<br>TuneIn, SHOUTcast, Radio Garden, radio.net and OnlineRadioBox only work in the RadioWizard apps for Android and Windows (they block websites).') + '</div>';
     } else {
       const on = SOURCES.filter(s => srcState[s.id]);
       const waiting = on.filter(s => srcState[s.id].wait).length;
