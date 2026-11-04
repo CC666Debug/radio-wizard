@@ -176,6 +176,24 @@
   dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
   dialog .row button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
   dialog .row button.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .bcHead { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; flex-wrap: wrap; }
+  .bcHead .who { flex: 1; min-width: 0; color: var(--muted); font-size: .9rem; }
+  .bcHead .who b { color: var(--text); }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 12px; cursor: pointer; font-size: .9rem; }
+  .btn.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .field { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; color: var(--text); font: inherit; outline: 0; }
+  .field:focus { border-color: var(--accent); }
+  .bcForm { display: grid; gap: 10px; margin-top: 14px; }
+  .album { display: flex; gap: 14px; align-items: center; margin: 12px 0; }
+  .album img { width: 110px; height: 110px; border-radius: 12px; object-fit: cover; flex: none; background: var(--surface-2); }
+  .album h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  .album .by { color: var(--muted); margin-bottom: 10px; }
+  .trk { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+  .trk .n { color: var(--muted); width: 1.6em; text-align: right; font-size: .85rem; }
+  .trk .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trk .d { color: var(--muted); font-size: .8rem; }
+  .trk.now { border-color: var(--accent); box-shadow: 0 0 12px var(--glow); }
+  .trk.off { opacity: .45; cursor: default; }
   #diagText { width: 100%; height: 50dvh; background: #0a0814; color: #cfc6ee; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
 </style>
 <!-- Visit counter (GoatCounter: free, no cookies). Diag log has a "Don't count me" switch. -->
@@ -207,6 +225,7 @@
       <button class="tab" role="tab" data-tab="search" aria-selected="true">Search</button>
       <button class="tab" role="tab" data-tab="favs" aria-selected="false">♥ Favorites</button>
       <button class="tab" role="tab" data-tab="recent" aria-selected="false">Recent</button>
+      <button class="tab" role="tab" data-tab="bc" aria-selected="false">Bandcamp</button>
     </div>
   </header>
 
@@ -229,6 +248,7 @@
         <div class="sub" id="npSub">Search for a station and tap it</div>
       </div>
       <button class="heart" id="npHeart" title="Favorite" hidden>♡</button>
+      <button class="iconBtn" id="nextBtn" title="Next song" hidden><svg viewBox="0 0 24 24" fill="currentColor" style="width:28px;height:28px"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg></button>
       <button class="play" id="playBtn" title="Play / stop" disabled>
         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       </button>
@@ -249,6 +269,15 @@
   <div class="row"><button type="button" id="srcAll">All</button><button type="button" class="main" id="srcDone">Done</button></div>
 </dialog>
 
+<dialog id="bcDlg">
+  <h3>Bandcamp</h3>
+  <div class="row" style="justify-content:flex-start">
+    <button type="button" id="bcRefresh">Reload my collection</button>
+    <button type="button" id="bcLoginBtn">Sign in to Bandcamp</button>
+    <button type="button" id="bcForget">Sign out / forget</button>
+  </div>
+</dialog>
+
 <dialog id="diagDlg">
   <h3>Diagnostic log</h3>
   <textarea id="diagText" readonly></textarea>
@@ -263,7 +292,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -710,6 +739,8 @@ function render() {
       if ((showDead ? results : live).length > shown) h += '<button class="chip more" id="moreBtn">Show more</button>';
       if (dead.length && !showDead) h += '<button class="chip more" id="deadBtn">Show ' + dead.length + ' that didn’t answer</button>';
     }
+  } else if (tab === 'bc') {
+    h += bcView();
   } else {
     const list = tab === 'favs' ? favs : recent;
     if (!list.length) h += '<div class="empty">' + (tab === 'favs' ? 'Tap ♡ on a station to keep it here.' : 'Stations you play show up here.') + '</div>';
@@ -718,6 +749,7 @@ function render() {
   els.main.innerHTML = h;
   const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
   const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
+  if (tab === 'bc') bcWire();
 }
 els.main.addEventListener('click', e => {
   const pick = e.target.closest('[data-pick]');
@@ -725,7 +757,10 @@ els.main.addEventListener('click', e => {
   const heart = e.target.closest('[data-heart]');
   if (heart) { toggleFav(listed[+heart.dataset.heart]); return; }
   const row = e.target.closest('.st');
-  if (row) playStation(listed[+row.dataset.i]);
+  if (row && row.dataset.bcalbum != null) { bcOpenAlbum(bcShown[+row.dataset.bcalbum]); return; }
+  if (row) { playStation(listed[+row.dataset.i]); return; }
+  const trk = e.target.closest('.trk');
+  if (trk && !trk.classList.contains('off')) bcPlayAlbum(bcAlbum, +trk.dataset.t);
 });
 els.form.addEventListener('submit', e => { e.preventDefault(); els.q.blur(); runSearch(els.q.value); });
 els.q.addEventListener('input', () => { els.clearQ.hidden = !els.q.value; });
@@ -783,6 +818,7 @@ function choose(st) {
 function playStation(st) {
   if (!st) return;
   hideNotice();
+  bcStop();
   choose(st);
   if (castConnected()) { stopHere(); loadOnSpeaker(current); }
   else playHere(current);
@@ -814,8 +850,9 @@ function tryNextHere(tok) {
   here.timer && clearTimeout(here.timer);
   here.timer = setTimeout(() => { if (tok === hereTok && hereState === 'starting') { diag('no sound after 15s'); tryNextHere(tok); } }, 15000);
 }
-audio.addEventListener('playing', () => { if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); renderBar(); setMedia(); });
-audio.addEventListener('error', () => { if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); tryNextHere(hereTok); });
+audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); renderBar(); setMedia(); });
+audio.addEventListener('ended', () => { if (bc && bc.where === 'here') bcNext(); });
+audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); tryNextHere(hereTok); });
 audio.addEventListener('stalled', () => diag('stalled'));
 audio.addEventListener('pause', () => renderBar());
 function rememberWorking(st, link) {
@@ -854,12 +891,17 @@ window.__onGCastApiAvailable = function (available) {
     if (e.sessionState === S.SESSION_STARTED) {
       els.castBtn.classList.remove('nudge');
       // A speaker was picked: what the phone was playing moves over to it.
-      if (here && current) { stopHere(); loadOnSpeaker(current); }
+      if (bc && bc.where === 'here') { const pos = audio.currentTime || 0; audio.pause(); bc.where = 'speaker'; bcLoadSpeaker(pos); }
+      else if (here && current) { stopHere(); loadOnSpeaker(current); }
     }
     if (e.sessionState === S.SESSION_RESUMED) speakerStation = current;
     if (e.sessionState === S.SESSION_START_FAILED) showNotice('The speaker didn’t accept the connection. Try again.');
-    if (e.sessionState === S.SESSION_ENDING) carryOver = castActive() && !speakerPaused() && current ? current : null;
+    if (e.sessionState === S.SESSION_ENDING) {
+      if (bc && bc.where === 'speaker') bc.carry = castActive() && !speakerPaused() ? { pos: player.currentTime || 0 } : null;
+      else carryOver = castActive() && !speakerPaused() && current ? current : null;
+    }
     if (e.sessionState === S.SESSION_ENDED) {
+      if (bc && bc.where === 'speaker') { const c = bc.carry; bc.where = 'here'; bc.carry = null; if (c) bcPlayHere(c.pos); else bc.state = 'paused'; }
       speakerLoading = speakerStation = null;
       if (carryOver) { const s = carryOver; carryOver = null; playHere(s); }
     }
@@ -925,6 +967,7 @@ function onSpeakerState() {
   diag('speaker player: ' + (player.playerState || 'none') + (player.playerState === PS.IDLE && media && media.idleReason ? ' (' + media.idleReason + ')' : ''));
   watchStall();
   lastSpeakerState = player.playerState;
+  if (bc && bc.where === 'speaker') { bcSpeakerState(media); return; }
   if (player.playerState === PS.PLAYING) {
     if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
     speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0;
@@ -957,6 +1000,7 @@ els.castBtn.addEventListener('click', () => {
 
 // ── Controls ────────────────────────────────────
 els.playBtn.addEventListener('click', () => {
+  if (bc) { bcToggle(); return; }
   if (castConnected()) {
     if (castActive()) { speakerPaused() ? ctrl.playOrPause() : ctrl.stop(); speakerStation = null; }
     else if (current) loadOnSpeaker(current);
@@ -965,6 +1009,7 @@ els.playBtn.addEventListener('click', () => {
   renderBar();
 });
 els.npHeart.addEventListener('click', () => { if (current) toggleFav(current); });
+$('nextBtn').addEventListener('click', () => bcNext());
 els.muteBtn.addEventListener('click', () => {
   if (castConnected()) ctrl.muteOrUnmute();
   else { audio.muted = !audio.muted; renderBar(); }
@@ -982,6 +1027,8 @@ function renderBar() {
   els.castBtn.classList.toggle('on', cast);
   els.castLabel.textContent = cast ? dev : ctx ? 'Cast' : els.castLabel.textContent;
   els.where.textContent = cast ? 'Speaker' : 'This device';
+  $('nextBtn').hidden = !bc;
+  if (bc) { bcRenderBar(cast, dev); return; }
   const st = current;
   els.npName.textContent = st ? st.name : 'Nothing playing';
   els.npArt.src = st && st.img ? st.img : 'icon-192.png';
@@ -1014,14 +1061,298 @@ function renderBar() {
 
 // Lock screen / headset controls while playing on this device.
 function setMedia() {
+  if ('mediaSession' in navigator && bc && bcTrack()) {
+    const t = bcTrack();
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: [{ src: t.art || new URL('icon-512.png', location.href).href, sizes: '512x512' }] });
+    return;
+  }
   if (!('mediaSession' in navigator) || !current) return;
   navigator.mediaSession.metadata = new MediaMetadata({ title: current.name, artist: 'RadioWizard', artwork: [{ src: current.img || new URL('icon-512.png', location.href).href, sizes: '512x512' }] });
 }
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => { if (current && !here) playHere(current); else audio.play(); });
-  navigator.mediaSession.setActionHandler('pause', () => stopHere());
-  navigator.mediaSession.setActionHandler('stop', () => stopHere());
+  navigator.mediaSession.setActionHandler('play', () => { if (bc) { audio.play(); return; } if (current && !here) playHere(current); else audio.play(); });
+  navigator.mediaSession.setActionHandler('pause', () => { if (bc) audio.pause(); else stopHere(); });
+  navigator.mediaSession.setActionHandler('stop', () => { if (bc) bcStop(); else stopHere(); });
+  navigator.mediaSession.setActionHandler('nexttrack', () => { if (bc) bcNext(); });
 }
+
+// ── Bandcamp: your own collection (Android app) ─
+// Bandcamp has no app access for listeners, so this reads the collection the way bandcamp.com does:
+// the fan's public collection list, then each album page for its song links (they work for about a day).
+// Signing in (optional) lets bought songs play in full where Bandcamp only gives everyone else a preview.
+let bcUser = safeGet('rw_bc_user') || '';
+let bcItems = readJSON('rw_bc_items', []);
+let bcBusy = '', bcFilter = '', bcAlbum = null, bcShown = [], bcSignedIn = safeGet('rw_bc_in') === 't';
+let bc = null;   // what's playing: { queue: [tracks], i, shuffle, where: 'here' | 'speaker', state }
+const BC_CAN = NATIVE;
+
+const bcArt = id => id ? 'https://f4.bcbits.com/img/a' + id + '_2.jpg' : '';
+async function bcFanId() {
+  // Signed in: Bandcamp says who you are. Otherwise the fan page holds the id.
+  try {
+    const d = await getJSON('https://bandcamp.com/api/fan/2/collection_summary');
+    if (d && d.fan_id) {
+      if (d.collection_summary && d.collection_summary.username) { bcUser = d.collection_summary.username; safeSet('rw_bc_user', bcUser); }
+      return d.fan_id;
+    }
+  } catch (e) {}
+  if (!bcUser) throw new Error('no username');
+  const r = await get('https://bandcamp.com/' + encodeURIComponent(bcUser));
+  const m = r.text.match(/fan_id&quot;:(\d+)/) || r.text.match(/"fan_id":(\d+)/);
+  if (!m) throw new Error(r.status === 404 ? 'That Bandcamp page wasn’t found.' : 'Couldn’t read that Bandcamp page.');
+  return +m[1];
+}
+async function bcLoad() {
+  if (bcBusy) return;
+  bcBusy = 'Loading your collection…'; render();
+  try {
+    const fan = await bcFanId();
+    const out = [];
+    let token = Math.floor(Date.now() / 1000) + '::a::';
+    for (let page = 0; page < 60; page++) {
+      const d = await getJSON('https://bandcamp.com/api/fancollection/1/collection_items', { method: 'POST', type: 'application/json', body: JSON.stringify({ fan_id: fan, older_than_token: token, count: 100 }) });
+      (d.items || []).forEach(x => {
+        if (!x.item_url) return;
+        out.push({ id: x.tralbum_type + x.tralbum_id, title: x.album_title || x.item_title, artist: x.band_name, url: x.item_url, art: bcArt(x.item_art_id), type: x.tralbum_type });
+      });
+      bcBusy = 'Loading your collection… ' + out.length; render();
+      if (!d.more_available || !d.last_token) break;
+      token = d.last_token;
+    }
+    bcItems = out.filter((x, i) => out.findIndex(y => y.id === x.id) === i);
+    safeSet('rw_bc_items', JSON.stringify(bcItems));
+    diag('bandcamp: ' + bcItems.length + ' items for fan ' + fan);
+  } catch (e) {
+    diag('bandcamp load FAILED: ' + e.message);
+    showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load the Bandcamp collection. Check the name and try again.');
+  }
+  bcBusy = ''; render();
+}
+
+const bcTrackCache = new Map();   // album link -> { at, tracks }
+async function bcTracks(item) {
+  const hit = bcTrackCache.get(item.url);
+  if (hit && Date.now() - hit.at < 3 * 3600e3) return hit.tracks;
+  const r = await get(item.url);
+  const m = r.text.match(/data-tralbum="([^"]+)"/);
+  if (!m) throw new Error('no album data');
+  const d = JSON.parse(unent(m[1]));
+  const tracks = (d.trackinfo || []).map((t, n) => ({
+    n: t.track_num || n + 1, title: t.title, artist: t.artist || item.artist, album: item.title, art: item.art, dur: t.duration || 0,
+    url: t.file && (t.file['mp3-v0'] || t.file['mp3-128']) || null,
+  }));
+  bcTrackCache.set(item.url, { at: Date.now(), tracks });
+  return tracks;
+}
+const bcTime = s => { s = Math.round(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const bcTrack = () => bc && bc.queue[bc.i];
+
+function bcView() {
+  let h = '';
+  if (!BC_CAN) return '<div class="empty">Bandcamp needs the RadioWizard Android app (Bandcamp blocks websites).</div>';
+  if (bcAlbum) {
+    const a = bcAlbum;
+    h += '<div class="bcHead"><button class="btn" id="bcBack">‹ Back</button></div>';
+    h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt=""><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
+      + '<button class="btn main" id="bcPlayAll">▶ Play</button> <button class="btn" id="bcShuf">🔀 Shuffle</button></div></div>';
+    if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this album. Try again.' : 'Opening…') + '</div>';
+    else {
+      const playing = bcTrack();
+      h += '<ul class="list">' + a.tracks.map((t, i) => '<li class="trk' + (t.url ? '' : ' off') + (playing && playing.url && playing.url === t.url ? ' now' : '') + '" data-t="' + i + '"><span class="n">' + t.n + '</span><span class="t">' + esc(t.title)
+        + '</span><span class="d">' + (t.url ? bcTime(t.dur) : 'not streamable') + '</span></li>').join('') + '</ul>';
+    }
+    return h;
+  }
+  if (!bcItems.length && !bcBusy) {
+    h += '<div class="bcForm"><div>Play and cast the music you’ve bought on Bandcamp.</div>'
+      + '<input class="field" id="bcName" placeholder="Your Bandcamp name (bandcamp.com/…)" value="' + esc(bcUser) + '" autocapitalize="off" autocomplete="off">'
+      + '<button class="btn main" id="bcGo">Load my collection</button>'
+      + '<button class="btn" id="bcLogin">' + (bcSignedIn ? 'Signed in ✓' : 'Sign in to Bandcamp (optional)') + '</button>'
+      + '<div class="hint" style="margin-top:0">Signing in lets every song you bought play in full; without it, some albums only play Bandcamp’s preview. Your password goes to Bandcamp’s own page and stays on this phone.</div></div>';
+    return h;
+  }
+  h += '<div class="bcHead"><div class="who"><b>' + esc(bcUser || 'Bandcamp') + '</b> · ' + (bcBusy ? esc(bcBusy) : bcItems.length + ' items') + '</div>'
+    + '<button class="btn main" id="bcShufAll">🔀 Shuffle all</button><button class="btn" id="bcMenu">⋯</button></div>';
+  h += '<input class="field" id="bcFilter" placeholder="Filter by album or artist" value="' + esc(bcFilter) + '" autocomplete="off">';
+  h += '<ul class="list" id="bcList" style="margin-top:10px">' + bcListHtml() + '</ul>';
+  return h;
+}
+function bcListHtml() {
+  const f = bcFilter.toLowerCase().trim();
+  bcShown = f ? bcItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : bcItems;
+  const cut = bcShown.slice(0, bcMore);
+  return cut.map((x, i) => '<li class="st" data-bcalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.artist) + (x.type === 't' ? ' · single track' : '') + '</div></div></li>').join('')
+    + (bcShown.length > bcMore ? '<li><button class="chip more" id="bcMoreBtn">Show more (' + (bcShown.length - bcMore) + ')</button></li>' : '')
+    + (!bcShown.length && !bcBusy ? '<li class="empty">Nothing matches.</li>' : '');
+}
+let bcMore = 150;
+function bcWire() {
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on('bcGo', () => { const n = ($('bcName').value || '').trim().replace(/^.*bandcamp\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !bcSignedIn) return; bcUser = n || bcUser; safeSet('rw_bc_user', bcUser); bcLoad(); });
+  on('bcLogin', () => { if (window.AndroidCast.bandcampLogin) window.AndroidCast.bandcampLogin(); });
+  on('bcBack', () => { bcAlbum = null; render(); });
+  on('bcPlayAll', () => bcPlayAlbum(bcAlbum, 0));
+  on('bcShuf', () => bcPlayAlbum(bcAlbum, -1));
+  on('bcShufAll', () => bcShuffleAll());
+  on('bcMenu', () => $('bcDlg').showModal());
+  on('bcMoreBtn', () => { bcMore += 150; $('bcList').innerHTML = bcListHtml(); bcWire(); });
+  const f = $('bcFilter');
+  if (f) f.oninput = () => { bcFilter = f.value; bcMore = 150; $('bcList').innerHTML = bcListHtml(); bcWire(); };
+}
+window.onBandcampLogin = ok => {
+  diag('bandcamp sign-in: ' + (ok ? 'yes' : 'closed'));
+  if (!ok) return;
+  bcSignedIn = true; safeSet('rw_bc_in', 't');
+  bcTrackCache.clear();
+  bcLoad();
+};
+
+async function bcOpenAlbum(item) {
+  if (!item) return;
+  bcAlbum = Object.assign({}, item);
+  render(); window.scrollTo(0, 0);
+  try { bcAlbum.tracks = await bcTracks(item); } catch (e) { diag('bandcamp album FAILED ' + item.url + ': ' + e.message); bcAlbum.err = true; }
+  if (tab === 'bc' && bcAlbum && bcAlbum.url === item.url) render();
+}
+function bcShuffle(list) { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; } return list; }
+function bcStart(queue, i, shuffle) {
+  if (!queue.length) { showNotice('Nothing on this album can be streamed.'); return; }
+  stopHere();
+  speakerStation = speakerLoading = null;
+  bc = { queue, i, shuffle, where: castConnected() ? 'speaker' : 'here', state: 'starting' };
+  hideNotice();
+  bcGo(0);
+}
+function bcPlayAlbum(album, from) {
+  if (!album || !album.tracks) return;
+  const ok = album.tracks.filter(t => t.url);
+  if (from === -1) bcStart(bcShuffle(ok.slice()), 0, false);
+  else { const t = album.tracks[from]; bcStart(ok, Math.max(0, ok.indexOf(t)), false); }
+}
+async function bcRandomTrack() {
+  for (let k = 0; k < 5 && bcItems.length; k++) {
+    const item = bcItems[Math.floor(Math.random() * bcItems.length)];
+    try { const ok = (await bcTracks(item)).filter(t => t.url); if (ok.length) return ok[Math.floor(Math.random() * ok.length)]; } catch (e) {}
+  }
+  return null;
+}
+async function bcShuffleAll() {
+  const t = await bcRandomTrack();
+  if (!t) { showNotice('Couldn’t get a song from Bandcamp. Try again.'); return; }
+  bcStart([t], 0, true);
+}
+// Shuffle all: the next random song is picked while this one plays, so there's no gap.
+let bcPre = null;
+function bcPrefetch() {
+  if (!bc || !bc.shuffle || bc.i < bc.queue.length - 1 || bcPre) return;
+  bcPre = bcRandomTrack().then(t => { if (t && bc && bc.shuffle) bc.queue.push(t); bcPre = null; });
+}
+async function bcNext() {
+  if (!bc) return;
+  if (bc.i >= bc.queue.length - 1 && bc.shuffle) { if (!bcPre) bcPrefetch(); if (bcPre) await bcPre; }
+  if (!bc) return;
+  if (bc.i >= bc.queue.length - 1) { diag('bandcamp: end of queue'); bc.state = 'ended'; renderBar(); return; }
+  bc.i++;
+  bcGo(0);
+}
+function bcGo(pos) {
+  const t = bcTrack();
+  if (!t) return;
+  bc.state = 'starting';
+  diag('bandcamp ' + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
+  if (bc.where === 'speaker' && castConnected()) bcLoadSpeaker(pos);
+  else { bc.where = 'here'; bcPlayHere(pos); }
+  renderBar(); if (tab === 'bc' && bcAlbum) render();
+}
+function bcPlayHere(pos) {
+  const t = bcTrack();
+  if (!t) return;
+  bc.where = 'here'; bc.state = 'starting';
+  audio.src = t.url;
+  if (pos) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = pos; } catch (e) {} }, { once: true });
+  audio.play().catch(err => diag('play() refused: ' + err.message));
+  renderBar();
+}
+function bcLoadSpeaker(pos) {
+  const session = ctx && ctx.getCurrentSession();
+  const t = bcTrack();
+  if (!session || !t) return;
+  bc.where = 'speaker'; bc.state = 'starting';
+  const info = new chrome.cast.media.MediaInfo(t.url, 'audio/mpeg');
+  info.streamType = chrome.cast.media.StreamType.BUFFERED;
+  const md = new chrome.cast.media.GenericMediaMetadata();
+  md.title = t.title;
+  md.subtitle = t.artist + ' · ' + t.album;
+  md.images = [new chrome.cast.Image(t.art || new URL('icon-512.png', location.href).href)];
+  info.metadata = md;
+  const req = new chrome.cast.media.LoadRequest(info);
+  req.autoplay = true;
+  if (pos) req.currentTime = pos;
+  bc.sent = t.url;
+  session.loadMedia(req).then(() => diag('speaker accepted the song')).catch(err => { diag('speaker REFUSED the song · ' + err); if (bc && bc.sent === t.url) bcNext(); });
+  renderBar();
+}
+function bcSpeakerState(media) {
+  const PS = chrome.cast.media.PlayerState, IR = chrome.cast.media.IdleReason;
+  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcPrefetch(); return; }
+  if (player.playerState === PS.PAUSED) { bc.state = 'paused'; return; }
+  if (player.playerState !== PS.IDLE || bc.state === 'starting' && !(media && media.idleReason)) return;
+  const why = media && media.idleReason;
+  if (why === IR.FINISHED || why === IR.ERROR) bcNext();   // song over (or it couldn't play): on to the next
+  else if (why === IR.CANCELLED || why === IR.INTERRUPTED) bc.state = 'paused';
+}
+function bcToggle() {
+  if (!bc) return;
+  if (bc.state === 'ended') { bc.i = bc.shuffle ? bc.i : 0; bcGo(0); return; }
+  if (bc.where === 'speaker' && castConnected()) {
+    if (castActive()) ctrl.playOrPause(); else bcLoadSpeaker(0);
+  } else if (audio.paused) { if (audio.getAttribute('src')) audio.play(); else bcPlayHere(0); }
+  else audio.pause();
+  renderBar();
+}
+function bcStop() {
+  if (!bc) return;
+  const wasSpeaker = bc.where === 'speaker';
+  bc = null; bcPre = null;
+  if (wasSpeaker && castActive()) ctrl.stop();
+  else { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+}
+function bcRenderBar(cast, dev) {
+  const t = bcTrack();
+  els.npName.textContent = t ? t.title : 'Bandcamp';
+  els.npArt.src = t && t.art ? t.art : 'icon-192.png';
+  els.npHeart.hidden = true;
+  let sub = t ? t.artist + ' · ' + t.album : '', playing = false, busy = false;
+  if (bc.where === 'speaker' && cast) {
+    const PS = chrome.cast.media.PlayerState;
+    if (bc.state === 'starting' || player.playerState === PS.BUFFERING) { sub = 'Starting on ' + dev + '…'; busy = true; playing = true; }
+    else if (speakerPaused() || bc.state === 'paused') sub = 'Paused on ' + dev + ' · ' + sub;
+    else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
+    else { sub = sub + ' · on ' + dev; playing = true; }
+    if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
+  } else {
+    if (bc.state === 'starting') { busy = true; playing = true; sub = 'Starting… · ' + sub; }
+    else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
+    else if (!audio.paused) playing = true;
+    else sub = 'Paused · ' + sub;
+  }
+  els.npSub.textContent = sub;
+  els.npSub.classList.toggle('live', false);
+  els.npArt.classList.toggle('spin', busy);
+  els.playBtn.disabled = false;
+  els.playIcon.innerHTML = playing ? '<path d="M7 5h4v14H7zm6 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+}
+$('bcRefresh').addEventListener('click', () => { $('bcDlg').close(); bcLoad(); });
+$('bcLoginBtn').addEventListener('click', () => { $('bcDlg').close(); if (window.AndroidCast.bandcampLogin) window.AndroidCast.bandcampLogin(); });
+$('bcForget').addEventListener('click', () => {
+  $('bcDlg').close();
+  bcItems = []; bcUser = ''; bcSignedIn = false; bcAlbum = null;
+  ['rw_bc_items', 'rw_bc_user', 'rw_bc_in'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  if (window.AndroidCast && window.AndroidCast.bandcampLogout) window.AndroidCast.bandcampLogout();
+  render();
+});
+$('bcDlg').addEventListener('click', e => { if (e.target === $('bcDlg')) $('bcDlg').close(); });
 
 // ── Share, diag log, version ────────────────────
 $('shareApp').addEventListener('click', e => {

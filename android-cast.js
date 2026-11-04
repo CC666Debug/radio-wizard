@@ -2,7 +2,7 @@
 // Google Cast service (like YouTube Music), which doesn't have Chrome's speaker-list bug.
 // This file stands in for Google's web cast library with the same names the page already uses,
 // passing each call to the app (window.AndroidCast) and turning the app's reports back into events.
-// (The same file as Four Realms' and Halloween Caster's.)
+// (Based on Four Realms' copy; this one also sends songs (BUFFERED) with a start time, for Bandcamp.)
 (function () {
   const bridge = window.AndroidCast;
   let nextId = 1;
@@ -50,6 +50,7 @@
     getSessionState: () => (state.device ? SessionState.SESSION_STARTED : SessionState.NO_SESSION),
     loadMedia: req => call('load', {
       url: req.media.contentId, contentType: req.media.contentType,
+      streamType: req.media.streamType || 'LIVE', currentTime: req.currentTime || 0,
       title: req.media.metadata && req.media.metadata.title || '',
       subtitle: req.media.metadata && req.media.metadata.subtitle || '',
       image: req.media.metadata && req.media.metadata.images && req.media.metadata.images[0] && req.media.metadata.images[0].url || '',
