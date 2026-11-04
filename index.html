@@ -14,25 +14,40 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
 <style>
+  /* Themes: a color (Wizard purple, Red, Blue, Green, Gold, Plain) in dark or light, plus an accent; per device. */
   :root {
     color-scheme: dark;
     --bg: #0e0b1a; --surface: #181329; --surface-2: #221b3a; --line: #352b57;
     --text: #efeaff; --muted: #a59bc8; --accent: #9b6bff; --accent-2: #5fe3ff; --gold: #ffd36b;
-    --accent-ink: #12082a; --good: #7ee7a8; --bad: #ff6b8a; --radius: 16px;
-    --glow: rgba(155, 107, 255, .35);
+    --good: #7ee7a8; --bad: #ff6b8a; --radius: 16px;
+    --top-bg: rgba(14, 11, 26, .92); --bar-bg: rgba(20, 15, 36, .96); --star: rgba(255, 255, 255, .5);
     --bar: 132px;
   }
+  :root[data-palette="red"] { --bg: #160d0f; --surface: #221418; --surface-2: #2e1b20; --line: #4a2a31; --text: #f5e9eb; --muted: #b89aa0; --accent: #e0455f; --accent-2: #ffb36b; --top-bg: rgba(22, 13, 15, .92); --bar-bg: rgba(30, 17, 21, .96); }
+  :root[data-palette="blue"] { --bg: #0a0f1a; --surface: #121a2b; --surface-2: #1a2540; --line: #2b3a5e; --text: #e8eefc; --muted: #98a6c8; --accent: #4f8cff; --accent-2: #5fe3ff; --top-bg: rgba(10, 15, 26, .92); --bar-bg: rgba(15, 22, 38, .96); }
+  :root[data-palette="green"] { --bg: #0b1410; --surface: #13211a; --surface-2: #1b2e24; --line: #2c4639; --text: #e9f3ec; --muted: #9db3a5; --accent: #3fbf7f; --accent-2: #c9e86b; --top-bg: rgba(11, 20, 16, .92); --bar-bg: rgba(16, 28, 22, .96); }
+  :root[data-palette="gold"] { --bg: #14110a; --surface: #211c10; --surface-2: #2d2616; --line: #4a3f22; --text: #f5efdf; --muted: #b8ab8a; --accent: #d9a520; --accent-2: #ffe08a; --top-bg: rgba(20, 17, 10, .92); --bar-bg: rgba(28, 24, 14, .96); }
+  :root[data-palette="plain"] { --bg: #121214; --surface: #1c1c20; --surface-2: #26262b; --line: #3a3a40; --text: #ececef; --muted: #a0a0a8; --accent: #9a9ca6; --accent-2: #c8c8d0; --top-bg: rgba(18, 18, 20, .92); --bar-bg: rgba(26, 26, 30, .96); }
+  :root[data-mode="light"] { color-scheme: light; --bg: #f6f3fd; --surface: #ffffff; --surface-2: #ece6fb; --line: #d9d0f2; --text: #1d1530; --muted: #6c6287; --accent: #6b3fd9; --accent-2: #0b8fb3; --good: #1f8f52; --bad: #c22a4b; --top-bg: rgba(246, 243, 253, .92); --bar-bg: rgba(255, 255, 255, .96); --star: transparent; }
+  :root[data-mode="light"][data-palette="red"] { --bg: #fcf5f6; --surface-2: #f6e4e7; --line: #ecd0d5; --text: #2a1418; --muted: #7d5f65; --accent: #b8283f; --accent-2: #c2600c; --top-bg: rgba(252, 245, 246, .92); }
+  :root[data-mode="light"][data-palette="blue"] { --bg: #f4f7fd; --surface-2: #e2eaf8; --line: #ccd8ee; --text: #121c30; --muted: #5d6a85; --accent: #2a62d0; --accent-2: #0b8fb3; --top-bg: rgba(244, 247, 253, .92); }
+  :root[data-mode="light"][data-palette="green"] { --bg: #f4f9f6; --surface-2: #e1efe7; --line: #cbe0d3; --text: #13231a; --muted: #5d7366; --accent: #1f8a55; --accent-2: #6b8a0b; --top-bg: rgba(244, 249, 246, .92); }
+  :root[data-mode="light"][data-palette="gold"] { --bg: #fbf8f0; --surface-2: #f3ebd6; --line: #e6dabb; --text: #2a220f; --muted: #7a6d4d; --accent: #9a6f05; --accent-2: #b5520b; --top-bg: rgba(251, 248, 240, .92); }
+  :root[data-mode="light"][data-palette="plain"] { --bg: #f5f5f6; --surface-2: #e9e9ec; --line: #d6d6db; --text: #1b1b1f; --muted: #6a6a73; --accent: #55575f; --accent-2: #3d6a9e; --top-bg: rgba(245, 245, 246, .92); }
+  :root { --glow: color-mix(in srgb, var(--accent) 35%, transparent); --accent-ink: color-mix(in srgb, var(--accent) 12%, #0b0614); }
+  :root[data-mode="light"] { --accent-ink: #ffffff; }
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
     background-color: var(--bg);
     background-image:
-      radial-gradient(ellipse at 50% -80px, rgba(155, 107, 255, .25), transparent 360px),
-      radial-gradient(1px 1px at 14% 6%, rgba(255, 255, 255, .55), transparent),
-      radial-gradient(1px 1px at 36% 2%, rgba(255, 255, 255, .35), transparent),
-      radial-gradient(1.5px 1.5px at 62% 9%, rgba(255, 230, 160, .5), transparent),
-      radial-gradient(1px 1px at 81% 4%, rgba(255, 255, 255, .4), transparent),
-      radial-gradient(1px 1px at 92% 12%, rgba(255, 255, 255, .3), transparent);
+      radial-gradient(ellipse at 50% -80px, color-mix(in srgb, var(--accent) 25%, transparent), transparent 360px),
+      radial-gradient(1px 1px at 14% 6%, var(--star), transparent),
+      radial-gradient(1px 1px at 36% 2%, var(--star), transparent),
+      radial-gradient(1.5px 1.5px at 62% 9%, var(--star), transparent),
+      radial-gradient(1px 1px at 81% 4%, var(--star), transparent),
+      radial-gradient(1px 1px at 92% 12%, var(--star), transparent);
     background-repeat: no-repeat; background-attachment: fixed;
     color: var(--text);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -46,7 +61,7 @@
   header.top {
     position: sticky; top: 0; z-index: 5;
     margin: 0 -16px; padding: max(10px, env(safe-area-inset-top)) 16px 10px;
-    background: rgba(14, 11, 26, .92); backdrop-filter: blur(10px);
+    background: var(--top-bg); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }
   .titleRow { display: flex; align-items: center; gap: 10px; }
@@ -61,7 +76,7 @@
   }
   .castBtn svg { width: 20px; height: 20px; flex: none; }
   .castBtn span { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .castBtn.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 12px rgba(95, 227, 255, .25); }
+  .castBtn.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 12px color-mix(in srgb, var(--accent-2) 25%, transparent); }
   .castBtn.nudge { animation: nudge 1s ease-in-out infinite alternate; }
   @keyframes nudge { to { box-shadow: 0 0 18px var(--glow); border-color: var(--accent); } }
 
@@ -70,7 +85,7 @@
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px;
   }
-  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(155, 107, 255, .2); }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
   .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: inherit; padding: 11px 0; }
   .search input::-webkit-search-cancel-button { display: none; }
   .iconBtn { background: none; border: 0; cursor: pointer; padding: 6px; color: var(--muted); display: grid; place-items: center; }
@@ -137,7 +152,7 @@
   .bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
     padding: 10px 16px max(12px, env(safe-area-inset-bottom));
-    background: rgba(20, 15, 36, .96); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
+    background: var(--bar-bg); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
   }
   .bar .wrap { display: grid; gap: 8px; }
   .barTop { display: flex; align-items: center; gap: 12px; }
@@ -150,7 +165,7 @@
   .np .sub.live { color: var(--good); }
   .play {
     width: 52px; height: 52px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
-    background: linear-gradient(135deg, var(--accent), #6b3dff); color: #fff; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #000)); color: #fff; display: grid; place-items: center;
     box-shadow: 0 0 16px var(--glow);
   }
   .play svg { width: 24px; height: 24px; }
@@ -210,7 +225,13 @@
   li.song .sMeta { color: var(--muted); font-size: .78rem; }
   li.song .sLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
   li.song .sLinks a { color: var(--accent-2); }
-  #diagText { width: 100%; height: 50dvh; background: #0a0814; color: #cfc6ee; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 14px; }
+  .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); }
+  .sw span { width: 18px; height: 18px; border-radius: 50%; background: var(--c); flex: none; border: 1px solid rgba(128, 128, 128, .35); }
+  .sw.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .sw.custom input { width: 24px; height: 24px; border: 0; padding: 0; background: none; cursor: pointer; }
+  .themeSub { color: var(--muted); font-size: .85rem; margin: 0 0 6px; }
+  #diagText { width: 100%; height: 50dvh; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; font: 12px/1.35 ui-monospace, Consolas, monospace; padding: 8px; }
 </style>
 <!-- Visit counter (GoatCounter: free, no cookies). Diag log has a "Don't count me" switch. -->
 <script data-goatcounter="https://cc666debug.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
@@ -221,6 +242,7 @@
     <div class="titleRow">
       <img class="logo" src="icon-192.png" alt="">
       <h1>RadioWizard</h1>
+      <button class="iconBtn" id="themeBtn" type="button" title="Light or dark (hold for colors)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path id="themeIcon" d=""/></svg></button>
       <button class="castBtn" id="castBtn" type="button" title="Cast to a speaker">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10zm20-7H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         <span id="castLabel">Cast</span>
@@ -288,6 +310,12 @@
   <div class="row"><button type="button" id="srcAll">All</button><button type="button" class="main" id="srcDone">Done</button></div>
 </dialog>
 
+<dialog id="themeDlg">
+  <h3>Theme</h3>
+  <div id="themeBody"></div>
+  <div class="row"><button type="button" class="main" id="themeClose">Done</button></div>
+</dialog>
+
 <dialog id="songsDlg">
   <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">♥ Saved songs</button></div>
   <ul class="list" id="songsList"></ul>
@@ -317,7 +345,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -325,6 +353,61 @@ const els = {
   muteIcon: $('muteIcon'), vol: $('vol'), where: $('where'), npArt: $('npArt'), npName: $('npName'), npSub: $('npSub'), npHeart: $('npHeart'),
 };
 const audio = $('audio');
+
+// ── Theme: color, light or dark, and accent, per device (like Markpad and Hue Deck) ──
+const PALETTES = [['Wizard', '', '#9b6bff'], ['Red', 'red', '#e0455f'], ['Blue', 'blue', '#4f8cff'], ['Green', 'green', '#3fbf7f'], ['Yellow', 'gold', '#d9a520'], ['Plain', 'plain', '#9a9ca6']];
+const MODES = [['Dark', 'dark'], ['Light', 'light'], ['Like the system', '']];
+const ACCENTS = [["Theme's own", ''], ['Purple', '#8b5cf6'], ['Pink', '#e0457b'], ['Red', '#d64545'], ['Orange', '#e8730c'], ['Gold', '#c99a06'], ['Green', '#2f9e5a'], ['Teal', '#14a3a3'], ['Cyan', '#22b8e0']];
+const tStore = k => { try { return localStorage.getItem('rw_' + k) || ''; } catch (e) { return ''; } };
+const tSave = (k, v) => { try { localStorage.setItem('rw_' + k, v); } catch (e) {} };
+const sysLight = matchMedia('(prefers-color-scheme: light)');
+let applyTheme = function () {
+  const d = document.documentElement, pal = tStore('palette'), mode = tStore('mode'), acc = tStore('accent');
+  if (pal) d.dataset.palette = pal; else delete d.dataset.palette;
+  const light = mode === 'light' || (!mode && sysLight.matches);
+  if (light) d.dataset.mode = 'light'; else delete d.dataset.mode;
+  if (acc) d.style.setProperty('--accent', acc); else d.style.removeProperty('--accent');
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e0b1a';
+};
+applyTheme();
+sysLight.addEventListener('change', () => applyTheme());
+function drawTheme() {
+  const pal = tStore('palette'), mode = tStore('mode'), acc = tStore('accent');
+  const sw = (kind, v, n, c, on) => '<button class="sw' + (on ? ' on' : '') + '" data-' + kind + '="' + v + '" title="' + n + '" style="--c:' + c + '"><span></span>' + n + '</button>';
+  $('themeBody').innerHTML = '<div class="themeSub">Color</div><div class="swatches">' + PALETTES.map(([n, v, c]) => sw('palette', v, n, c, v === pal)).join('') + '</div>'
+    + '<div class="themeSub">Light or dark</div><div class="swatches">' + MODES.map(([n, v]) => sw('mode', v, n, v === 'dark' ? '#18151f' : v === 'light' ? '#f3f1f7' : 'linear-gradient(90deg,#f3f1f7 50%,#18151f 50%)', v === mode)).join('') + '</div>'
+    + '<div class="themeSub">Accent (buttons, highlights)</div><div class="swatches">' + ACCENTS.map(([n, c]) => sw('accent', c, n, c || 'var(--accent)', c === acc)).join('')
+    + '<label class="sw custom' + (acc && !ACCENTS.some(a => a[1] === acc) ? ' on' : '') + '"><input type="color" id="accentPick" value="' + (acc || '#9b6bff') + '"><span style="display:none"></span>Custom…</label></div>';
+  $('accentPick').addEventListener('input', e => { tSave('accent', e.target.value); applyTheme(); $('themeBody').querySelectorAll('[data-accent]').forEach(b => b.classList.remove('on')); e.target.parentElement.classList.add('on'); });
+}
+$('themeBody').addEventListener('click', e => {
+  const b = e.target.closest('button.sw');
+  if (!b) return;
+  if (b.dataset.palette != null) { tSave('palette', b.dataset.palette); tSave('accent', ''); }   // a new color brings its own accent
+  else if (b.dataset.mode != null) tSave('mode', b.dataset.mode);
+  else if (b.dataset.accent != null) tSave('accent', b.dataset.accent);
+  applyTheme(); drawTheme();
+});
+// The sun/moon button: a tap switches light and dark; holding it opens the colors (like Markpad, Hue Deck and LaunchPad).
+const SUN = 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z';
+const MOON = 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z';
+function themeIcon() { $('themeIcon').setAttribute('d', document.documentElement.dataset.mode === 'light' ? MOON : SUN); }
+themeIcon();
+const _apply = applyTheme;
+applyTheme = function () { _apply(); themeIcon(); };
+let holdTimer = null, held = false;
+const tb = $('themeBtn');
+tb.addEventListener('pointerdown', () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; drawTheme(); $('themeDlg').showModal(); }, 500); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(t => tb.addEventListener(t, () => clearTimeout(holdTimer)));
+tb.addEventListener('contextmenu', e => e.preventDefault());
+tb.addEventListener('click', () => {
+  if (held) { held = false; return; }
+  tSave('mode', document.documentElement.dataset.mode === 'light' ? 'dark' : 'light');
+  applyTheme();
+});
+$('themeClose').addEventListener('click', () => $('themeDlg').close());
+$('themeDlg').addEventListener('click', e => { if (e.target === $('themeDlg')) $('themeDlg').close(); });
 
 // ── Small helpers ───────────────────────────────
 const safeGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
