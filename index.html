@@ -389,7 +389,9 @@
 <dialog id="songsDlg">
   <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">♥ Saved songs</button></div>
   <ul class="list" id="songsList"></ul>
-  <div class="row"><button type="button" id="songsSave">Save as file</button><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
+  <div class="row" id="backupRow" style="justify-content:flex-start"><button type="button" id="savedBackup">⬇️ Back up</button><button type="button" id="savedFolder" hidden>📁 Folder</button><button type="button" id="savedRestore">⬆️ Restore</button><input type="file" id="savedFile" accept=".md,.txt,text/markdown,text/plain" hidden></div>
+  <p class="hint" id="backupMsg" style="margin:6px 0 0"></p>
+  <div class="row"><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
 </dialog>
 
 <dialog id="bcDlg">
@@ -415,7 +417,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1626,6 +1628,7 @@ $('bcDlg').addEventListener('click', e => { if (e.target === $('bcDlg')) $('bcDl
 let song = '', songArt = '', songAt = 0, songEnds = 0, songStarts = 0, songWatchTok = 0, songTimer = null;
 let heard = readJSON('rw_heard', []);     // [{ song, station, at }]
 let saved = readJSON('rw_saved', []);     // [{ song, station, at }]
+let autoSave = () => {};   // keeps the device's backup file matching (set up with Back up below)
 const songKey = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 function cleanTitle(t) {
@@ -1779,6 +1782,7 @@ function toggleSaved(x) {
   if (isSaved(x.song)) saved = saved.filter(y => songKey(y.song) !== songKey(x.song));
   else saved.unshift({ song: x.song, station: x.station, at: Date.now() });
   safeSet('rw_saved', JSON.stringify(saved));
+  autoSave();
   renderBar();
   if ($('songsDlg').open) drawSongs();
 }
@@ -1808,6 +1812,8 @@ function drawSongs() {
     ul.appendChild(li);
   });
   $('songsCopy').hidden = !list.length;
+  $('backupRow').hidden = songsTab !== 'saved';
+  $('backupMsg').hidden = songsTab !== 'saved';
 }
 $('songsList').addEventListener('click', e => {
   const b = e.target.closest('[data-sv]');
@@ -1821,21 +1827,6 @@ $('songsCopy').addEventListener('click', () => {
   const list = songsTab === 'recent' ? heard : saved;
   const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\n' + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '')).join('\n') + '\n';
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { $('songsCopy').textContent = 'Copied'; setTimeout(() => $('songsCopy').textContent = 'Copy list', 1500); }, () => {});
-});
-$('songsSave').addEventListener('click', () => {
-  const list = songsTab === 'recent' ? heard : saved;
-  if (!list.length) return;
-  const name = 'RadioWizard ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '.md';
-  const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\nUpdated ' + new Date().toLocaleString() + '\n\n'
-    + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '') + ' · [YouTube](https://www.youtube.com/results?search_query=' + encodeURIComponent(x.song.replace(' – ', ' ')) + ')').join('\n') + '\n';
-  if (window.AndroidCast && window.AndroidCast.saveFile && !window.AndroidCast.desktop) {
-    showNotice(window.AndroidCast.saveFile(name, text) ? 'Saved “' + name + '” in Downloads.' : 'Couldn’t save the file.');
-    return;
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
-  a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 });
 $('songShare').addEventListener('click', () => {
   const x = nowSong();
@@ -2202,6 +2193,153 @@ $('catSet').addEventListener('click', () => { const v = $('catNew').value.trim()
 $('catAuto').addEventListener('click', () => catSet(''));
 $('catCancel').addEventListener('click', () => $('catDlg').close());
 $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('catDlg').close(); });
+
+
+// Old song lists: entries saved before 1.5.1 can hold iHeart's raw song data; clean them and drop repeats.
+{
+  const fix = list => {
+    let changed = false;
+    const out = [];
+    list.forEach(x => {
+      const c = cleanTitle(x.song) || x.song;
+      if (c !== x.song) { x.song = c; changed = true; }
+      if (out.length && songKey(out[out.length - 1].song) === songKey(x.song)) { changed = true; return; }
+      out.push(x);
+    });
+    return { out, changed };
+  };
+  let r = fix(heard); if (r.changed) { heard = r.out; safeSet('rw_heard', JSON.stringify(heard)); }
+  r = fix(saved); if (r.changed) { saved = r.out; safeSet('rw_saved', JSON.stringify(saved)); }
+}
+
+// Saved songs backup (the same as the casters'): a small Markdown file in a folder you pick. Once picked, every
+// heart and ✕ rewrites it, so a synced folder (Obsidian) stays up to date by itself. Each device has its own file
+// (the device is in the name), and an app that opens empty takes the file's songs back before writing.
+{
+  const msg = t => { $('backupMsg').textContent = t; };
+  const day = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const device = () => /Windows/.test(navigator.userAgent) ? 'pc' : /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2 ? 'mac'
+    : Math.min(screen.width, screen.height) >= 600 ? 'tablet' : 'phone';
+  const A = window.AndroidCast;
+  const androidFolders = !!(A && A.pickBackupFolder && !A.desktop);
+  const canPick = androidFolders || 'showDirectoryPicker' in window;
+  $('savedFolder').hidden = !canPick;
+  const db = (mode, fn) => new Promise((ok, fail) => {   // remembers the picked folder (localStorage can't hold it)
+    const o = indexedDB.open('rw_backup', 1);
+    o.onupgradeneeded = () => o.result.createObjectStore('kv');
+    o.onerror = () => fail(o.error);
+    o.onsuccess = () => {
+      try { const t = o.result.transaction('kv', mode), r = fn(t.objectStore('kv')); t.oncomplete = () => ok(r.result); t.onerror = () => fail(t.error); }
+      catch (e) { fail(e); }
+    };
+  });
+  const listSong = line => {   // a line from this app's or the casters' lists → a saved song
+    let m = line.match(/^- \*\*(.+)\*\* · (.*) · (.*) · (\d{4}-\d{2}-\d{2})\s*$/);
+    if (m) return { song: m[2] ? m[2] + ' – ' + m[1] : m[1], station: m[3], at: Date.parse(m[4] + 'T12:00:00') || Date.now() };
+    if (!(m = line.match(/^- \*\*(.+)\*\* · (.*) · (\d{4}-\d{2}-\d{2})\s*$/))) return null;
+    return { song: m[1], station: m[2], at: Date.parse(m[3] + 'T12:00:00') || Date.now() };
+  };
+  const listText = () => '# RadioWizard · saved songs\n\nUpdated ' + new Date().toLocaleString() + ' · ' + saved.length + (saved.length === 1 ? ' song' : ' songs')
+    + '\n\n' + saved.map(f => '- **' + f.song + '** · ' + (f.station || '') + ' · ' + day(f.at)).join('\n') + '\n';
+  const fileName = () => 'radiowizard-saved-songs-' + device() + '.md';
+  const openedEmpty = !saved.length;
+  let linked = false, webDir = null, quiet = 0, writing = Promise.resolve();
+  function takeBack(old) {
+    let added = 0;
+    for (const line of (old || '').split(/\r?\n/)) {
+      const x = listSong(line);
+      if (x && !isSaved(x.song)) { saved.push(x); added++; }
+    }
+    if (added) { saved.sort((a, b) => b.at - a.at); safeSet('rw_saved', JSON.stringify(saved)); renderBar(); if ($('songsDlg').open) drawSongs(); }
+    return added;
+  }
+  function writeAndroid() { quiet++; A.saveBackup(fileName(), listText(), false); }
+  function writeWeb() {
+    const dir = webDir;
+    writing = writing.then(async () => {
+      const w = await (await dir.getFileHandle(fileName(), { create: true })).createWritable();
+      await w.write(listText()); await w.close();
+      msg('Auto-saving in ' + dir.name + ' as ' + fileName());
+    }).catch(e => { diag('auto-save failed: ' + e.message); msg('Couldn’t auto-save. Tap Back up to try again.'); });
+    return writing;
+  }
+  async function readWeb(dir) {
+    try { return await (await (await dir.getFileHandle(fileName())).getFile()).text(); }
+    catch (e) { if (e.name !== 'NotFoundError') throw e; return ''; }
+  }
+  function link(old, picked) {
+    const added = (openedEmpty || picked) ? takeBack(old) : 0;
+    linked = true;
+    if (added) diag('took back ' + added + ' songs from ' + fileName());
+    return added;
+  }
+  autoSave = async () => {
+    if (linked) { androidFolders ? writeAndroid() : writeWeb(); return; }
+    if (!webDir) return;
+    try { if (await webDir.requestPermission({ mode: 'readwrite' }) !== 'granted') return; link(await readWeb(webDir), false); writeWeb(); }
+    catch (e) { diag('auto-save failed: ' + e.message); }
+  };
+  // At start: pick up the remembered folder.
+  (async () => {
+    if (androidFolders) {
+      try { const r = JSON.parse(A.readBackup(fileName())); if (r.ok) { if (link(r.text, false)) writeAndroid(); msg('Auto-saving as ' + fileName()); } } catch (e) {}
+      return;
+    }
+    if (!('showDirectoryPicker' in window)) return;
+    webDir = await db('readonly', kv => kv.get('dir')).catch(() => null);
+    if (webDir && await webDir.queryPermission({ mode: 'readwrite' }) === 'granted') {
+      try { if (link(await readWeb(webDir), false)) writeWeb(); msg('Auto-saving in ' + webDir.name + ' as ' + fileName()); } catch (e) { diag('auto-save folder failed: ' + e.message); }
+    }
+  })();
+  window.onAndroidBackup = r => {
+    if (r.where === 'picked') {
+      try { const x = JSON.parse(A.readBackup(r.name)); const n = link(x.ok ? x.text : '', true); writeAndroid();
+        if (n) msg('Took back ' + n + (n === 1 ? ' song' : ' songs') + ' from ' + r.name); } catch (e) { msg('Couldn’t read the backup folder.'); }
+      return;
+    }
+    const auto = quiet > 0; if (auto) quiet--;
+    if (r.ok) msg((auto ? 'Auto-saving in ' : 'Saved in ') + r.where + ' as ' + r.name);
+    else msg(r.where === 'cancel' ? 'Backup cancelled.' : 'Couldn’t save the backup file.');
+  };
+  async function backUp(pickNew) {
+    const name = fileName();
+    if (androidFolders) { if (pickNew || !linked) { A.pickBackupFolder(name); return; } writeAndroid(); return; }
+    if ('showDirectoryPicker' in window) {
+      try {
+        let dir = pickNew ? null : webDir || await db('readonly', kv => kv.get('dir')).catch(() => null);
+        if (dir && await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') dir = null;
+        const picked = !dir;
+        if (picked) {
+          dir = await window.showDirectoryPicker({ id: 'rw-backup', mode: 'readwrite', startIn: 'documents' });
+          await db('readwrite', kv => kv.put(dir, 'dir')).catch(() => {});
+        }
+        webDir = dir;
+        const n = link(await readWeb(dir), picked);
+        await writeWeb();
+        if (n) msg('Took back ' + n + (n === 1 ? ' song' : ' songs') + ' from ' + name);
+        return;
+      } catch (e) { if (e.name === 'AbortError') { msg('Backup cancelled.'); return; } diag('backup folder failed: ' + e.message); }
+    }
+    if (!saved.length) { msg('No saved songs to back up yet.'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([listText()], { type: 'text/markdown' }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    msg('Backup downloaded as ' + name);
+  }
+  $('savedBackup').addEventListener('click', () => backUp(false));
+  $('savedFolder').addEventListener('click', () => backUp(true));
+  $('savedRestore').addEventListener('click', () => $('savedFile').click());
+  $('savedFile').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const n = takeBack(await file.text());
+    autoSave();
+    msg(n ? 'Restored ' + n + (n === 1 ? ' song' : ' songs') + '.' : 'Nothing new in that file.');
+  });
+}
 
 // ── Share, diag log, version ────────────────────
 $('shareApp').addEventListener('click', e => {
