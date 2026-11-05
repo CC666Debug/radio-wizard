@@ -176,7 +176,29 @@
   .player .row .iconBtn { padding: 8px; color: var(--text); }
   .player .row .iconBtn svg { width: 24px; height: 24px; }
   .player .row .iconBtn:disabled { opacity: .35; cursor: default; }
-  .player .row .vol { display: flex; gap: 4px; align-items: center; color: var(--accent); }
+  .player .row .vol { display: flex; gap: 4px; align-items: center; color: var(--accent); touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  /* The speaker icon: up to five sound waves in the theme's color (more as it gets louder), pulsing while music plays. */
+  #muteBtn svg { width: 30px; height: 24px; }
+  #muteBtn.muted { color: var(--muted); }
+  #volIcon .wave { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; opacity: .16; }
+  #volIcon .wave.on { stroke: var(--accent); opacity: 1; filter: drop-shadow(0 0 2px var(--accent)); }
+  #muteBtn.blaring #volIcon .wave.on { animation: blare 1.1s ease-out infinite; }
+  #muteBtn.blaring #volIcon .w2.on { animation-delay: .12s; }
+  #muteBtn.blaring #volIcon .w3.on { animation-delay: .24s; }
+  #muteBtn.blaring #volIcon .w4.on { animation-delay: .36s; }
+  #muteBtn.blaring #volIcon .w5.on { animation-delay: .48s; }
+  @keyframes blare { 0% { opacity: .35; } 30% { opacity: 1; } 100% { opacity: .5; } }
+  @media (prefers-reduced-motion: reduce) { #muteBtn.blaring #volIcon .wave.on { animation: none; } }
+  /* The volume pop-up (wheel, or hold the speaker and slide), in the theme's colors. */
+  .volpop {
+    position: fixed; z-index: 60; width: 56px; height: 200px; padding: 10px 0 12px; border-radius: 28px;
+    background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0, 0, 0, .55);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
+  }
+  .volpop .pct { font-size: 18px; font-weight: 800; color: var(--accent); text-shadow: 0 0 10px var(--glow); font-variant-numeric: tabular-nums; }
+  .volpop .track { position: relative; flex: 1; width: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .volpop .fill { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, var(--accent), var(--accent-2)); box-shadow: 0 0 10px var(--glow); }
+  .volpop .who { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
   .volnum { font-weight: 700; font-size: .9rem; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: left; }
   .play {
     width: 56px; height: 56px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
@@ -351,7 +373,7 @@
         <button class="iconBtn" id="nextBtn" title="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg></button>
         <button class="iconBtn" id="addBtn" title="Add to a playlist" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h12M3 12h12M3 18h7M18 13v8M14 17h8"/></svg></button>
         <button class="iconBtn vol" id="muteBtn" title="Mute">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path id="muteIcon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+          <svg viewBox="0 0 28 24" fill="currentColor" id="volIcon"></svg>
           <span class="volnum" id="volNum">80%</span>
         </button>
       </div>
@@ -384,6 +406,7 @@
   <div class="notice" id="notice" hidden><span id="noticeText"></span><button id="noticeClose" title="Close">✕</button></div>
   <main id="main"></main>
   <button class="toTop" id="toTop" title="Back to the top" hidden>↑</button>
+  <div class="volpop" id="volPop" aria-hidden="true" hidden><div class="pct">80%</div><div class="track"><div class="fill"></div></div><div class="who">Here</div></div>
 
   <footer>
     <div>Searches free public radio directories. Stations belong to their owners.</div>
@@ -469,12 +492,12 @@
 
 <script>
 'use strict';
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
   castBtn: $('castBtn'), castLabel: $('castLabel'), playBtn: $('playBtn'), playIcon: $('playIcon'), muteBtn: $('muteBtn'),
-  muteIcon: $('muteIcon'), vol: $('vol'), where: $('where'), npArt: $('npArt'), npName: $('npName'), npSub: $('npSub'), npHeart: $('npHeart'),
+  volIcon: $('volIcon'), vol: $('vol'), where: $('where'), npArt: $('npArt'), npName: $('npName'), npSub: $('npSub'), npHeart: $('npHeart'),
 };
 const audio = $('audio');
 
@@ -1128,9 +1151,9 @@ function tryNextHere(tok) {
   here.timer && clearTimeout(here.timer);
   here.timer = setTimeout(() => { if (tok === hereTok && hereState === 'starting') { diag('no sound after 15s'); tryNextHere(tok); } }, 15000);
 }
-audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; bcHeard(); diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); playStarted(); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); songWatch(here.st, here.links[here.i].url); renderBar(); setMedia(); });
+audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; bcHeard(); diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; here.everPlayed = true; clearRetry(); retry = 0; clearTimeout(here.timer); playStarted(); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); songWatch(here.st, here.links[here.i].url); renderBar(); setMedia(); });
 audio.addEventListener('ended', () => { if (bc && bc.where === 'here') bcNext(); });
-audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); if (here.done) return; tryNextHere(hereTok); });
+audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); if (here.everPlayed) { if (!retryTimer) reconnectHere(); return; } if (here.done) return; tryNextHere(hereTok); });
 audio.addEventListener('stalled', () => diag('stalled'));
 audio.addEventListener('pause', () => renderBar());
 function rememberWorking(st, link) {
@@ -1142,8 +1165,40 @@ function rememberWorking(st, link) {
   if (current && current.key === st.key) { current.play = p; safeSet('rw_current', JSON.stringify(current)); }
   [favs, recent].forEach((list, n) => { const f = list.find(x => x.key === st.key); if (f) { f.play = p; safeSet(n ? 'rw_recent' : 'rw_favs', JSON.stringify(list)); } });
 }
+// The stream dropped mid-play: start it again (at "now", it's live radio), with growing gaps; waits for the internet.
+const RETRY_DELAYS = [1, 2, 4, 8, 15, 30];
+let retry = 0, retryTimer = null, dropTimer = null, offlineWait = false;
+function clearRetry() { clearTimeout(retryTimer); clearTimeout(dropTimer); retryTimer = dropTimer = null; offlineWait = false; }
+function reconnectHere() {
+  clearRetry();
+  if (!here || bc) return;
+  const tok = hereTok, l = here.links[here.i];
+  if (!l) return;
+  hereState = 'reconnecting';
+  if (!navigator.onLine) { offlineWait = true; diag('offline: waiting for the internet'); renderBar(); return; }
+  const delay = RETRY_DELAYS[Math.min(retry, RETRY_DELAYS.length - 1)] * 1000;
+  retry++;
+  diag('stream dropped: reconnecting in ' + delay / 1000 + 's (try ' + retry + ')');
+  renderBar();
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (tok !== hereTok || !here) return;
+    audio.src = hereSrc(l.url);
+    audio.play().catch(() => {});
+    dropTimer = setTimeout(reconnectHere, 10000);   // still nothing: try again
+  }, delay);
+}
+const dropped = () => {
+  if (bc || !here || !here.everPlayed || hereState !== 'playing' || dropTimer || retryTimer) return;
+  dropTimer = setTimeout(reconnectHere, 8000);   // a short hiccup sorts itself out
+};
+audio.addEventListener('waiting', dropped);
+audio.addEventListener('stalled', dropped);
+window.addEventListener('online', () => { if (here && offlineWait) { retry = 0; reconnectHere(); } });
+
 function stopHere() {
   hereTok++;
+  clearRetry(); retry = 0;
   if (!bc) songStop();
   if (here && here.timer) clearTimeout(here.timer);
   here = null; hereState = 'idle';
@@ -1312,17 +1367,74 @@ els.vol.addEventListener('input', () => {
   else { audio.volume = els.vol.value / 100; safeSet('rw_vol', els.vol.value); }
   $('volNum').textContent = els.vol.value + '%';
 });
-// The mouse wheel anywhere over the player turns the volume up and down, 5% a notch (like the casters).
-function wheelVolume(e) {
-  if (!e.deltaY) return;
-  e.preventDefault();
-  const v = Math.max(0, Math.min(100, (+els.vol.value) + (e.deltaY < 0 ? 5 : -5)));
-  if (v === +els.vol.value) return;
-  els.vol.value = v;
-  els.vol.dispatchEvent(new Event('input'));
+// Volume: tap the speaker to mute. Press and hold it, slide up or down and let go to set the volume (one touch).
+// The mouse wheel anywhere over the player changes it too, 5% a notch. The pop-up shows the level as it changes.
+{
+  const btn = els.muteBtn, pop = $('volPop'), fill = pop.querySelector('.fill'), pct = pop.querySelector('.pct'), who = pop.querySelector('.who');
+  let holdTimer = null, hideTimer = null, pressing = false, held = false, y0 = 0, v0 = 0;
+  function place() {
+    const r = btn.getBoundingClientRect(), h = pop.offsetHeight;
+    pop.style.left = Math.min(innerWidth - pop.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - pop.offsetWidth / 2)) + 'px';
+    pop.style.top = (r.top - h - 10 >= 8 ? r.top - h - 10 : r.bottom + 10) + 'px';   // above the button, or below if there's no room
+  }
+  function showVol() {
+    pop.hidden = false; place();
+    fill.style.height = els.vol.value + '%';
+    pct.textContent = els.vol.value + '%';
+    who.textContent = castConnected() ? 'Speaker' : 'Here';
+    paintVol();
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { if (!pressing) pop.hidden = true; }, 900);
+  }
+  function setVol(v) {
+    v = Math.round(Math.min(100, Math.max(0, v)));
+    if (+els.vol.value !== v) { els.vol.value = v; els.vol.dispatchEvent(new Event('input')); }
+    if (castConnected() ? player && player.isMuted : audio.muted) els.muteBtn.click();   // turning it up while muted unmutes
+    showVol();
+  }
+  btn.addEventListener('pointerdown', e => {
+    pressing = true; held = false; y0 = e.clientY; v0 = +els.vol.value;
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { held = true; if (navigator.vibrate) navigator.vibrate(10); showVol(); }, 250);
+  });
+  btn.addEventListener('pointermove', e => {
+    if (!pressing) return;
+    if (!held && Math.abs(e.clientY - y0) > 8) { clearTimeout(holdTimer); held = true; showVol(); }
+    if (held) setVol(v0 + (y0 - e.clientY) / 170 * 100);   // about a thumb's slide from silent to full
+  });
+  const end = () => { if (!pressing) return; pressing = false; clearTimeout(holdTimer); if (held) showVol(); };
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+  btn.addEventListener('click', e => { if (held && e.isTrusted) { held = false; e.stopImmediatePropagation(); } }, true);   // a hold isn't a tap
+  $('bar').addEventListener('wheel', e => {
+    if (!e.deltaY) return;
+    e.preventDefault();
+    setVol(+els.vol.value + (e.deltaY < 0 ? 5 : -5));
+  }, { passive: false });
+  btn.title = 'Tap to mute · hold and slide for volume' + (matchMedia('(pointer: fine)').matches ? ' · or scroll over the player' : '');
+  els.vol.addEventListener('input', paintVol);
 }
-$('bar').addEventListener('wheel', wheelVolume, { passive: false });
-els.muteBtn.title = 'Mute' + (matchMedia('(pointer: fine)').matches ? ' · scroll over the player for volume' : '');
+// The speaker icon: 0-5 sound waves for the volume (pulsing while music plays), or the crossed-out speaker when muted.
+function waves() { return [3.5, 6, 8.5, 11, 13.5].map(r => { const x = (12 + r * .766).toFixed(2), dy = (r * .643).toFixed(2); return 'M' + x + ' ' + (12 - dy).toFixed(2) + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + (12 + +dy).toFixed(2); }); }
+var volIconKey = '';
+function paintVol() {
+  const cast = castConnected();
+  const muted = cast ? !!(player && player.isMuted) : audio.muted;
+  const v = +els.vol.value, n = muted ? -1 : v <= 0 ? 0 : Math.min(5, Math.ceil(v / 20));
+  const PS = window.chrome && chrome.cast && chrome.cast.media && chrome.cast.media.PlayerState;
+  const sounding = cast ? castActive() && PS && player.playerState === PS.PLAYING
+    : bc ? bc.where === 'here' && !audio.paused : hereState === 'playing' && !audio.paused;
+  els.muteBtn.classList.toggle('muted', muted);
+  els.muteBtn.classList.toggle('blaring', !!sounding && !muted);
+  $('volNum').textContent = els.vol.value + '%';
+  if (String(n) === volIconKey) return;   // leave the icon alone so the pulsing doesn't restart
+  volIconKey = String(n);
+  els.volIcon.innerHTML = muted
+    ? '<path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z"/>'
+    : '<path d="M3 9v6h4l5 5V4L7 9H3z"/>' + waves().map((d, i) => '<path class="wave w' + (i + 1) + (i < n ? ' on' : '') + '" d="' + d + '"/>').join('');
+}
 
 function renderBar() {
   const cast = castConnected();
@@ -1339,6 +1451,7 @@ function renderBar() {
   $('songShare').hidden = !ns;
   if (ns) { const on = isSaved(ns.song); $('songHeart').textContent = on ? '♥' : '♡'; $('songHeart').classList.toggle('on', on); }
   drawClock();
+  paintVol();
   if (bc) { bcRenderBar(cast, dev); return; }
   const st = current;
   els.npName.textContent = st ? st.name : 'Nothing playing';
@@ -1358,6 +1471,7 @@ function renderBar() {
     if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
   } else if (st) {
     if (hereState === 'starting') { sub = 'Tuning in…' + secsSince(hereStartAt); busy = true; playing = true; }
+    else if (hereState === 'reconnecting') { sub = offlineWait ? 'No internet: it starts again when you’re back online' : 'Reconnecting…'; busy = true; playing = true; }
     else if (hereState === 'playing' && !audio.paused) { sub = 'Live' + (st.country ? ' · ' + st.country : ''); live = true; playing = true; }
     else sub = [st.country, st.tags.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Tap play';
     if (document.activeElement !== els.vol) els.vol.value = Math.round(audio.volume * 100);
@@ -1371,8 +1485,6 @@ function renderBar() {
   els.npArt.classList.toggle('spin', busy);
   els.playBtn.disabled = !st && !castActive();
   els.playIcon.innerHTML = playing ? '<path d="M6 6h12v12H6z"/>' : '<path d="M8 5v14l11-7z"/>';
-  const muted = cast ? player && player.isMuted : audio.muted;
-  els.muteIcon.setAttribute('d', muted ? 'M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z' : 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z');
 }
 
 // Lock screen / headset controls while playing on this device.
