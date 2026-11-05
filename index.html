@@ -306,6 +306,9 @@
   .subRow .sub { min-width: 0; }
   .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
   .sHeart.on { color: #ff5c9a; }
+  .subRow .sBtn { flex: none; padding: 0 4px; font-size: 1.05rem; line-height: 1; }
+  header.top.mini .subRow .sBtn { display: none; }
+  button.pTime { background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
   .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
   .pTrack i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
@@ -359,10 +362,10 @@
         <div class="np">
           <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="crowd" id="crowd" hidden></span></div>
           <div class="name" id="npName">Nothing playing</div>
-          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button></div>
+          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
         </div>
       </div>
-      <div class="prog" id="prog" hidden><span class="pTime" id="pT">0:00</span><div class="pTrack"><i id="pFill"></i></div><span class="pTime" id="pD">0:00</span></div>
+      <div class="prog" id="prog" hidden><div class="pTrack"><i id="pFill"></i></div><button class="pTime" id="pD" type="button" title="Tap to change how the time shows">0:00</button></div>
       <div class="row">
         <button class="iconBtn" id="shufBtn" title="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
         <button class="iconBtn" id="prevBtn" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
@@ -377,11 +380,7 @@
           <span class="volnum" id="volNum">80%</span>
         </button>
       </div>
-      <div class="volRow">
-        <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume">
-        <button class="iconBtn" id="songShare" title="Share this song" hidden>📤</button>
-        <button class="iconBtn" id="songsBtn" title="Recently played and saved songs">🎵</button>
-      </div>
+      <input type="range" id="vol" min="0" max="100" value="80" aria-label="Volume" hidden>
     </div>
     <form class="searchRow" id="searchForm" autocomplete="off">
       <label class="search">
@@ -492,7 +491,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1989,7 +1988,15 @@ async function findArt(title) {
 
 // ── The time bar ──
 // Radio: only when the station says how long the song is (laut.fm). Bandcamp: always.
-const pEls = { box: $('prog'), t: $('pT'), d: $('pD'), fill: $('pFill') };
+const pEls = { box: $('prog'), d: $('pD'), fill: $('pFill') };
+// Tap the time to switch between these; the choice is remembered on this device (like the casters).
+const TIME_STYLES = [
+  (e, d) => bcTime(e) + ' / ' + bcTime(d),              // 1:26 / 2:23
+  (e, d) => '−' + bcTime(d - e) + ' / ' + bcTime(d),    // −0:57 / 2:23
+  (e, d) => bcTime(e) + ' · −' + bcTime(d - e),         // 1:26 · −0:57
+];
+let timeStyle = (parseInt(safeGet('rw_time'), 10) || 0) % TIME_STYLES.length;
+pEls.d.addEventListener('click', e => { e.stopPropagation(); timeStyle = (timeStyle + 1) % TIME_STYLES.length; safeSet('rw_time', String(timeStyle)); drawClock(); });
 function songClock() {
   if (bc && bcTrack()) {
     const t = bcTrack();
@@ -2010,8 +2017,7 @@ function drawClock() {
   if (!c || !isFinite(c.dur) || c.dur <= 0) { pEls.box.hidden = true; return; }
   pEls.box.hidden = false;
   const pos = Math.max(0, Math.min(c.pos, c.dur));
-  pEls.t.textContent = bcTime(pos);
-  pEls.d.textContent = bcTime(c.dur);
+  pEls.d.textContent = TIME_STYLES[timeStyle](pos, c.dur);
   pEls.fill.style.width = (pos / c.dur * 100).toFixed(2) + '%';
 }
 setInterval(drawClock, 500);
