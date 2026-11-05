@@ -58,10 +58,10 @@
   button { font: inherit; color: inherit; }
   .wrap { max-width: 720px; margin: 0 auto; }
 
-  /* Fixed (not sticky) so shrinking it to the mini player never moves the list you're reading; #topSpace holds its room. */
+  /* Pinned at the top while the list scrolls under it (same as Four Realms). */
   header.top {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 5; max-width: 752px; margin: 0 auto; box-sizing: border-box;
-    view-transition-name: rw-top; padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+    position: sticky; top: 0; z-index: 5; margin: 0 -16px;
+    padding: max(10px, env(safe-area-inset-top)) 16px 10px;
     background: var(--top-bg); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }
@@ -80,6 +80,13 @@
   .castBtn.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 12px color-mix(in srgb, var(--accent-2) 25%, transparent); }
   .castBtn.nudge { animation: nudge 1s ease-in-out infinite alternate; }
   @keyframes nudge { to { box-shadow: 0 0 18px var(--glow); border-color: var(--accent); } }
+  /* Cast icon: an empty outline when not connected, filled in when connected, waves rippling while it connects. */
+  .castBtn .cIco .fillIn { opacity: 0; transition: opacity .25s; }
+  .castBtn.on .cIco .fillIn { opacity: .9; }
+  .castBtn.joining .cIco .w { animation: castWave 1.2s ease-in-out infinite; }
+  .castBtn.joining .cIco .w2 { animation-delay: .2s; }
+  .castBtn.joining .cIco .w3 { animation-delay: .4s; }
+  @keyframes castWave { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
 
   .searchRow { display: flex; gap: 8px; margin-top: 10px; }
   .search {
@@ -184,13 +191,22 @@
 
   header.top.mini { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
   header.top.mini .titleRow { zoom: .8; }
-  header.top.mini .searchRow, header.top.mini .tabs, header.top.mini .volRow, header.top.mini .np .label,
+  header.top.mini .castBtn { width: 42px; height: 42px; padding: 0; justify-content: center; border-radius: 10px; }
+  header.top.mini .castBtn span { display: none; }
+  header.top.mini .castBtn svg { width: 24px; height: 24px; }
+  header.top.mini .searchRow, header.top.mini .tabs, header.top.mini .volRow, header.top.mini #npState, header.top.mini #where,
   header.top.mini #shufBtn, header.top.mini #prevBtn, header.top.mini #muteBtn, header.top.mini #addBtn, header.top.mini .pTime { display: none !important; }
   header.top.mini .player { position: relative; display: flex; align-items: center; gap: 6px; padding: 7px 5px 7px 7px; border-radius: 12px; overflow: hidden; margin-top: 6px; }
   header.top.mini .now { flex: 1; min-width: 0; gap: 10px; cursor: pointer; }
   header.top.mini .player .art { width: 42px; height: 42px; border-radius: 9px; }
   header.top.mini .np .name { font-size: .92rem; }
   header.top.mini .np .sub { font-size: .78rem; }
+  /* In the mini bar the listener count sits right of the station name, on the same line (like Four Realms). */
+  header.top.mini .np { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 7px; }
+  header.top.mini .np .label { display: contents; }
+  header.top.mini .np .name { order: 1; flex: 0 1 auto; min-width: 0; max-width: calc(100% - 4.2em); }
+  header.top.mini .np .label .crowd { order: 2; flex: none; font-size: .7rem; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  header.top.mini .np .subRow { order: 3; flex: 0 0 100%; min-width: 0; }
   header.top.mini .player .row { flex: none; gap: 0; }
   header.top.mini .play { width: 42px; height: 42px; margin: 0 2px; }
   header.top.mini .play svg { width: 21px; height: 21px; }
@@ -199,11 +215,26 @@
   header.top.mini .prog { position: absolute; left: 0; right: 0; bottom: 0; gap: 0; }
   header.top.mini .pTrack { height: 2px; border-radius: 0; background: transparent; }
   html { overflow-anchor: none; }
-  /* Only the player bar moves (it glides from full to mini); the list stays perfectly still. */
-  ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-  ::view-transition-group(rw-top) { animation-duration: .3s; animation-timing-function: cubic-bezier(.25, .8, .25, 1); }
-  ::view-transition-image-pair(rw-top) { overflow: hidden; }
-  ::view-transition-old(rw-top), ::view-transition-new(rw-top) { height: 100%; object-fit: none; object-position: top; animation-duration: .3s; }
+  /* The shrink is a morph (Four Realms' code): the art, names and buttons glide into their mini places while the
+     panel closes up from the bottom and the list slides up with it (names are only set while it runs). */
+  header.top.vt { view-transition-name: mini-top; }
+  header.top.vt .titleRow { view-transition-name: mini-head; }
+  header.top.vt #npArt { view-transition-name: mini-badge; }
+  header.top.vt #npName { view-transition-name: mini-name; }
+  header.top.vt #npSub { view-transition-name: mini-song; }
+  header.top.vt #playBtn { view-transition-name: mini-play; }
+  header.top.vt #nextBtn { view-transition-name: mini-next; }
+  /* The page under the bar slides by exactly the amount the player shrinks, on the same curve, so the list stays
+     glued to the player's bottom edge the whole way (the top station never slips out of sight). */
+  ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; animation-duration: .34s; animation-timing-function: cubic-bezier(.25, .8, .25, 1); }
+  ::view-transition-old(root) { animation-name: mini-root-old; }
+  ::view-transition-new(root) { animation-name: mini-root-new; }
+  @keyframes mini-root-old { to { transform: translateY(calc(-1 * var(--mini-shift, 0px))); } }
+  @keyframes mini-root-new { from { transform: translateY(var(--mini-shift, 0px)); } }
+  ::view-transition-group(*) { animation-duration: .34s; animation-timing-function: cubic-bezier(.25, .8, .25, 1); }
+  ::view-transition-image-pair(mini-top) { overflow: hidden; }
+  ::view-transition-old(mini-top), ::view-transition-new(mini-top) { height: 100%; object-fit: none; object-position: top; }
+  ::view-transition-old(mini-name), ::view-transition-new(mini-name), ::view-transition-old(mini-song), ::view-transition-new(mini-song) { height: 100%; object-fit: none; object-position: left center; }
   .bkRow { display: flex; gap: 8px; justify-content: flex-end; margin: 14px 0 4px; }
   .bkRow .btn { font-size: .85rem; padding: 6px 10px; }
   .bkKind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -296,7 +327,7 @@
       <h1>RadioWizard</h1>
       <button class="iconBtn" id="themeBtn" type="button" title="Light or dark (hold for colors)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path id="themeIcon" d=""/></svg></button>
       <button class="castBtn" id="castBtn" type="button" title="Cast to a speaker">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10zm20-7H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        <svg class="cIco" viewBox="0 0 24 24" fill="currentColor"><path class="fillIn" d="M5 7h14v10h-5.6A13 13 0 0 0 5 8.6z"/><path d="M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path class="w w1" d="M1 18v3h3a3 3 0 0 0-3-3z"/><path class="w w2" d="M1 14v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7z"/><path class="w w3" d="M1 10v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z"/></svg>
         <span id="castLabel">Cast</span>
       </button>
     </div>
@@ -304,7 +335,7 @@
       <div class="now" id="nowArea">
         <img class="art" id="npArt" src="icon-192.png" alt="">
         <div class="np">
-          <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span></div>
+          <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="crowd" id="crowd" hidden></span></div>
           <div class="name" id="npName">Nothing playing</div>
           <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button></div>
         </div>
@@ -349,7 +380,6 @@
       <button class="tab" role="tab" data-tab="pl" aria-selected="false">Playlists</button>
     </div>
   </header>
-  <div id="topSpace"></div>
 
   <div class="notice" id="notice" hidden><span id="noticeText"></span><button id="noticeClose" title="Close">✕</button></div>
   <main id="main"></main>
@@ -439,7 +469,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1015,7 +1045,15 @@ srcDlg.addEventListener('click', e => { if (e.target === srcDlg) srcDlg.close();
 
 // ── Notices ─────────────────────────────────────
 function showNotice(msg) { els.noticeText.textContent = msg; els.notice.hidden = false; }
-function hideNotice() { els.notice.hidden = true; }
+function hideNotice() { els.notice.hidden = true; failShown = false; }
+// "Isn't playing" notices: a station can still start a few seconds later, so they wait to be sure,
+// and if it plays after all the notice goes away by itself.
+let failShown = false, failTimer = null;
+function showFail(msg, stillTrying) {
+  clearTimeout(failTimer);
+  failTimer = setTimeout(() => { if (!stillTrying()) { showNotice(msg); failShown = true; } }, 8000);
+}
+function playStarted() { clearTimeout(failTimer); if (failShown) hideNotice(); }
 $('noticeClose').addEventListener('click', hideNotice);
 
 // ── Playing ─────────────────────────────────────
@@ -1076,8 +1114,13 @@ function tryNextHere(tok) {
   if (!l) {
     diag('nothing played for ' + here.st.name);
     const blocked = !NATIVE && here.links.some(x => x.url.startsWith('http:'));
-    showNotice(here.st.name + ' isn’t playing right now.' + (blocked ? ' (Its link is old-style http://, which browsers block; the Android app or casting plays it.)' : ' Try another station.'));
-    stopHere(); return;
+    const msg = here.st.name + ' isn’t playing right now.' + (blocked ? ' (Its link is old-style http://, which browsers block; the Android app or casting plays it.)' : ' Try another station.');
+    const keep = here.st.key;
+    if (here.done) return;
+    here.done = true; here.i = here.links.length - 1;   // keep listening to the last link a little longer before giving up
+    showFail(msg, () => hereState === 'playing' || !here || here.st.key !== keep || castConnected());
+    setTimeout(() => { if (tok === hereTok && here && here.st.key === keep && hereState !== 'playing') stopHere(); }, 8000);
+    return;
   }
   diag('trying ' + l.url);
   audio.src = hereSrc(l.url);
@@ -1085,9 +1128,9 @@ function tryNextHere(tok) {
   here.timer && clearTimeout(here.timer);
   here.timer = setTimeout(() => { if (tok === hereTok && hereState === 'starting') { diag('no sound after 15s'); tryNextHere(tok); } }, 15000);
 }
-audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; bcHeard(); diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); songWatch(here.st, here.links[here.i].url); renderBar(); setMedia(); });
+audio.addEventListener('playing', () => { if (bc && bc.where === 'here') { bc.state = 'playing'; bcHeard(); diag('bandcamp playing: ' + bcTrack().title); renderBar(); setMedia(); bcPrefetch(); return; } if (!here) return; hereState = 'playing'; clearTimeout(here.timer); playStarted(); diag('playing ' + audio.currentSrc); rememberWorking(here.st, here.links[here.i]); songWatch(here.st, here.links[here.i].url); renderBar(); setMedia(); });
 audio.addEventListener('ended', () => { if (bc && bc.where === 'here') bcNext(); });
-audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); tryNextHere(hereTok); });
+audio.addEventListener('error', () => { if (bc && bc.where === 'here' && audio.getAttribute('src')) { diag('bandcamp song error ' + (audio.error && audio.error.code)); bcNext(); return; } if (!here || !audio.getAttribute('src')) return; diag('stream error ' + (audio.error && audio.error.code)); if (here.done) return; tryNextHere(hereTok); });
 audio.addEventListener('stalled', () => diag('stalled'));
 audio.addEventListener('pause', () => renderBar());
 function rememberWorking(st, link) {
@@ -1157,7 +1200,13 @@ async function loadOnSpeaker(st, links) {
   if (speakerLoading !== st) return;
   speakerLinks = links;
   const l = links[links.i];
-  if (!l) { speakerLoading = null; showNotice(st.name + ' won’t play on the speaker. Try another station.'); renderBar(); return; }
+  if (!l) {
+    showFail(st.name + ' won’t play on the speaker. Try another station.', () => castActive() || speakerLoading !== st || !castConnected());
+    setTimeout(() => { if (speakerLoading === st && !castActive()) { speakerLoading = null; renderBar(); } }, 8000);
+    renderBar(); return;
+  }
+  const at = links.i;
+  links.sentAt = Date.now();
   const info = new chrome.cast.media.MediaInfo(l.url, l.type);
   info.streamType = chrome.cast.media.StreamType.LIVE;
   const md = new chrome.cast.media.GenericMediaMetadata();
@@ -1175,7 +1224,7 @@ async function loadOnSpeaker(st, links) {
     diag('speaker accepted after ' + ((performance.now() - t) / 1000).toFixed(2) + 's'); kickStart();
   }).catch(err => {
     diag('speaker REFUSED · ' + err);
-    if (speakerLoading !== st) return;
+    if (speakerLoading !== st || links.i !== at) return;
     links.i++; loadOnSpeaker(st, links);
   });
 }
@@ -1209,7 +1258,7 @@ function onSpeakerState() {
   if (bc && bc.where === 'speaker') { bcSpeakerState(media); return; }
   if (player.playerState === PS.PLAYING) {
     if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
-    speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0;
+    speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0; playStarted();
     const sl = speakerLinks && speakerLinks[speakerLinks.i];
     if (speakerStation && songWatchFor !== speakerStation.key) { songWatchFor = speakerStation.key; songWatch(speakerStation, sl ? sl.url : safeGet('rw_cast')); }
     return;
@@ -1218,7 +1267,8 @@ function onSpeakerState() {
   const IR = chrome.cast.media.IdleReason, why = media && media.idleReason;
   if (speakerLoading && why === IR.ERROR) {   // this link doesn't play on the speaker: try the next one
     const st = speakerLoading;
-    if (speakerLinks) { speakerLinks.i++; loadOnSpeaker(st, speakerLinks); }
+    // (a report that comes right after sending is still about the link before it, which the refusal already moved past)
+    if (speakerLinks && speakerLinks[speakerLinks.i] && Date.now() - (speakerLinks.sentAt || 0) > 1500) { speakerLinks.i++; loadOnSpeaker(st, speakerLinks); }
     return;
   }
   if (!speakerStation) return;
@@ -1278,6 +1328,8 @@ function renderBar() {
   const cast = castConnected();
   const dev = cast ? ctx.getCurrentSession().getCastDevice().friendlyName : '';
   els.castBtn.classList.toggle('on', cast);
+  els.castBtn.classList.toggle('joining', !cast && !!ctx && ctx.getCastState() === 'CONNECTING');
+  els.castBtn.title = cast ? 'Casting to ' + dev : 'Cast to a speaker';
   els.castLabel.textContent = cast ? dev : ctx ? 'Cast' : els.castLabel.textContent;
   els.where.textContent = cast ? 'on ' + dev : 'This device';
   $('volNum').textContent = els.vol.value + '%';
@@ -1715,6 +1767,7 @@ function songWatch(st, url) {
   const key = st && url ? st.key + '|' + url : '';
   if (key && key === songWatchKey) return;   // already watching this one
   songWatchKey = key;
+  crowdWatch(st, url);
   const tok = ++songWatchTok;
   clearTimeout(songTimer);
   if (!st || !url) { setSong('', '', 0, 0); return; }
@@ -1731,7 +1784,58 @@ function songWatch(st, url) {
   };
   check();
 }
-function songStop() { songWatchKey = ''; songWatchTok++; clearTimeout(songTimer); setSong('', '', 0, 0); }
+function songStop() { songWatchKey = ''; songWatchTok++; clearTimeout(songTimer); setSong('', '', 0, 0); crowdWatch(null); }
+
+// How many people are listening, when the station tells (laut.fm, SomaFM, Icecast servers); checked every minute.
+let crowdTok = 0, crowdTimer = null, crowdN = null;
+async function crowdFor(st, url) {
+  for (const s of st.srcs) {
+    try {
+      if (s.src === 'laut' && s.url) {
+        const name = s.url.replace(/^https?:\/\//, '').split('/').pop().split('?')[0];
+        const n = await getJSON('https://api.laut.fm/station/' + encodeURIComponent(name) + '/listeners');
+        if (typeof n === 'number') return n;
+      }
+      if (s.src === 'soma' && s.url) {
+        const id = (s.url.match(/somafm\.com\/([a-z0-9]+)-/) || [])[1];
+        const d = id && await getJSON('https://api.somafm.com/channels.json');
+        const c = d && d.channels && d.channels.find(x => x.id === id);
+        if (c && c.listeners != null) return +c.listeners;
+      }
+    } catch (e) {}
+  }
+  try {
+    const u = new URL(url);
+    if (location.protocol === 'https:' && u.protocol === 'http:' && !NATIVE) return null;
+    const d = await getJSON(u.origin + '/status-json.xsl', { timeout: 6000 });
+    let src = d && d.icestats && d.icestats.source;
+    if (!src) return null;
+    if (!Array.isArray(src)) src = [src];
+    const mine = src.find(x => x.listenurl && new URL(x.listenurl).pathname === u.pathname) || (src.length === 1 ? src[0] : null);
+    if (mine && mine.listeners != null) return +mine.listeners;
+  } catch (e) {}
+  return null;
+}
+function showCrowd(n) {
+  crowdN = n;
+  const e = $('crowd');
+  e.hidden = n == null;
+  e.textContent = n == null ? '' : '👥 ' + n.toLocaleString();
+  e.title = n == null ? '' : n + (n === 1 ? ' person' : ' people') + ' listening';
+}
+function crowdWatch(st, url) {
+  const tok = ++crowdTok;
+  clearTimeout(crowdTimer);
+  showCrowd(null);
+  if (!st || !url) return;
+  const check = async () => {
+    const n = await crowdFor(st, url);
+    if (tok !== crowdTok) return;
+    showCrowd(n);
+    if (n != null) crowdTimer = setTimeout(check, 60000);   // a station that never says isn't asked again
+  };
+  check();
+}
 
 let artTok = 0;
 function setSong(title, station, starts, ends, art) {
@@ -1908,34 +2012,44 @@ setInterval(() => { if (barBusy) renderBar(); }, 1000);
 const secsSince = t => t ? ' ' + Math.max(0, Math.round((Date.now() - t) / 1000)) + 's' : '';
 function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.classList.toggle('live', !!live); }
 
-// ── Mini player ──
-// The moment the list starts moving up, the top shrinks to one slim bar and the list rides up with it.
-// Any scroll up, or a tap on the bar, brings the full player back. The height given up is added under the page,
-// so the page length and scroll position never change (on short lists that would bounce). Same as Four Realms.
+// ── Mini player ── (Four Realms' code)
+// The moment the list starts moving up under the player, the top shrinks to one slim bar, and the list rides up
+// with it (glued to the bar's bottom edge, so the top station stays in view). Any scroll up, or a tap on the bar,
+// brings the full player back. The height the player gives up is added below the footer, so the page length and
+// scroll position never change (on short lists that would snap the scroll back and bounce).
 {
-  const topEl = document.querySelector('header.top'), mainEl = document.querySelector('main'), root = document.documentElement;
+  const topEl = document.querySelector('header.top'), padEl = document.querySelector('.wrap'), root = document.documentElement;
   let mini = false, vt = null;
-  // The header floats over the page; #topSpace keeps the full player's height in the page, so going mini or back
-  // never moves the list, never changes the page length, and only uncovers or covers rows behind the bar.
-  const space = $('topSpace');
-  const fit = () => { if (!mini) space.style.height = topEl.offsetHeight + 'px'; };
-  new ResizeObserver(fit).observe(topEl); fit();
-  const apply = on => topEl.classList.toggle('mini', on);
+  const apply = on => {
+    if (on) {
+      const h = topEl.offsetHeight;
+      padEl.style.paddingBottom = h + 'px';   // pad first: the page must never get shorter, even mid-swap
+      topEl.classList.add('mini');
+      const d = Math.max(0, h - topEl.offsetHeight);
+      padEl.style.paddingBottom = d + 'px';
+      root.style.setProperty('--mini-shift', d + 'px');
+    } else {
+      const d = parseFloat(padEl.style.paddingBottom) || 0;
+      topEl.classList.remove('mini'); padEl.style.paddingBottom = '';
+      root.style.setProperty('--mini-shift', -d + 'px');
+    }
+  };
   const setMini = on => {
     if (on === mini) return;
     mini = on;
     if (vt) vt.skipTransition();
     if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(on); return; }
+    topEl.classList.add('vt');
     const t = vt = document.startViewTransition(() => apply(on));
-    t.finished.finally(() => { if (vt === t) vt = null; });
+    t.finished.finally(() => { if (vt === t) { vt = null; topEl.classList.remove('vt'); } });
   };
   let lastY = scrollY;
   addEventListener('scroll', () => {
     const y = scrollY, dy = y - lastY;
     $('toTop').hidden = y < 700;
-    if (y <= 2) { setMini(false); lastY = y; return; }
-    if (dy > 4) { setMini(true); lastY = y; }
-    else if (dy < -6) { setMini(false); lastY = y; }
+    if (y <= 2) { setMini(false); lastY = y; return; }   // back at the very top: full player
+    if (dy > 4) { setMini(true); lastY = y; }            // the list started moving up: shrink right away
+    else if (dy < -6) { setMini(false); lastY = y; }     // scrolled up a bit: full player
   }, { passive: true });
   $('nowArea').addEventListener('click', () => { if (mini) { setMini(false); lastY = scrollY; } });
   $('toTop').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
