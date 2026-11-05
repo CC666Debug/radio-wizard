@@ -350,7 +350,7 @@
     <div class="titleRow">
       <img class="logo" src="icon-192.png" alt="">
       <h1>RadioWizard</h1>
-      <button class="iconBtn" id="themeBtn" type="button" title="Light or dark (hold for colors)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path id="themeIcon" d=""/></svg></button>
+      <button class="iconBtn" id="themeBtn" type="button" title="Light or dark (hold or right-click for colors)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path id="themeIcon" d=""/></svg></button>
       <button class="castBtn" id="castBtn" type="button" title="Cast to a speaker">
         <svg class="cIco" viewBox="0 0 24 24" fill="currentColor"><path class="fillIn" d="M5 7h14v10h-5.6A13 13 0 0 0 5 8.6z"/><path d="M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path class="w w1" d="M1 18v3h3a3 3 0 0 0-3-3z"/><path class="w w2" d="M1 14v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7z"/><path class="w w3" d="M1 10v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z"/></svg>
         <span id="castLabel">Cast</span>
@@ -491,7 +491,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -546,7 +546,8 @@ let holdTimer = null, held = false;
 const tb = $('themeBtn');
 tb.addEventListener('pointerdown', () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; drawTheme(); $('themeDlg').showModal(); }, 500); });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => tb.addEventListener(t, () => clearTimeout(holdTimer)));
-tb.addEventListener('contextmenu', e => e.preventDefault());
+// Right-click opens the colors too (like Markpad, Hue Deck and LaunchPad).
+tb.addEventListener('contextmenu', e => { e.preventDefault(); clearTimeout(holdTimer); if (!held) { drawTheme(); $('themeDlg').showModal(); } held = true; });
 tb.addEventListener('click', () => {
   if (held) { held = false; return; }
   tSave('mode', document.documentElement.dataset.mode === 'light' ? 'dark' : 'light');
