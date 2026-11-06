@@ -100,11 +100,12 @@
   .iconBtn svg { width: 20px; height: 20px; }
   .goBtn { border: 0; border-radius: 12px; padding: 0 16px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; }
 
-  .tabs { display: flex; gap: 6px; margin-top: 10px; }
+  .tabs { display: flex; gap: 4px; margin-top: 10px; }
   .tab {
-    flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 2px;
-    font-size: .84rem; cursor: pointer; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 4px;
+    font-size: .8rem; cursor: pointer; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  @media (max-width: 400px) { .tabs { gap: 3px; } .tab { font-size: .72rem; padding: 8px 2px; } }
   .tab[aria-selected="true"] { background: var(--surface-2); color: var(--text); border-color: var(--accent); }
 
   .status { color: var(--muted); font-size: .85rem; margin: 12px 2px 6px; min-height: 1.2em; }
@@ -398,6 +399,7 @@
       <button class="tab" role="tab" data-tab="favs" aria-selected="false">♥ Favs</button>
       <button class="tab" role="tab" data-tab="recent" aria-selected="false">Recent</button>
       <button class="tab" role="tab" data-tab="bc" aria-selected="false">Bandcamp</button>
+      <button class="tab" role="tab" data-tab="sc" aria-selected="false">SoundCloud</button>
       <button class="tab" role="tab" data-tab="pl" aria-selected="false">Playlists</button>
     </div>
   </header>
@@ -477,6 +479,14 @@
   </div>
 </dialog>
 
+<dialog id="scDlg">
+  <h3>SoundCloud</h3>
+  <div class="row" style="justify-content:flex-start">
+    <button type="button" id="scRefresh">Reload my SoundCloud</button>
+    <button type="button" id="scForget">Forget my SoundCloud</button>
+  </div>
+</dialog>
+
 <dialog id="diagDlg">
   <h3>Diagnostic log</h3>
   <textarea id="diagText" readonly></textarea>
@@ -491,7 +501,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.10.1';
+const VERSION = '1.11.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1008,6 +1018,8 @@ function render() {
     }
   } else if (tab === 'bc') {
     h += bcView();
+  } else if (tab === 'sc') {
+    h += scView();
   } else if (tab === 'pl') {
     h += plView();
   } else if (tab === 'favs') {
@@ -1021,6 +1033,7 @@ function render() {
   const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
   const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
   if (tab === 'bc') bcWire();
+  if (tab === 'sc') scWire();
   if (tab === 'pl') plWire();
   const fs = $('favSort'); if (fs) fs.onchange = () => { favSort = fs.value; safeSet('rw_favsort', favSort); render(); };
 }
@@ -1037,13 +1050,21 @@ els.main.addEventListener('click', e => {
   if (addT) { const t = bcAlbum.tracks[+addT.dataset.addt]; plAsk([bcItem(t)], t.title); return; }
   const addS = e.target.closest('[data-adds]');
   if (addS) { const t = bcHits[+addS.dataset.adds]; plAsk([t], t.title); return; }
+  const scAddT = e.target.closest('[data-scaddt]');
+  if (scAddT) { const t = scAlbum.tracks[+scAddT.dataset.scaddt]; plAsk([bcItem(t)], t.title); return; }
+  const scAddS = e.target.closest('[data-scadds]');
+  if (scAddS) { const t = scHits[+scAddS.dataset.scadds]; plAsk([bcItem(t)], t.title); return; }
+  const scHit = e.target.closest('[data-schit]');
+  if (scHit) { bcStart([Object.assign({}, scHits[+scHit.dataset.schit])], 0, false); return; }
   const hit = e.target.closest('[data-hit]');
   if (hit) { bcPlayHit(bcHits[+hit.dataset.hit]); return; }
   const row = e.target.closest('.st');
   if (row && row.dataset.bcalbum != null) { bcOpenAlbum(bcShown[+row.dataset.bcalbum]); return; }
+  if (row && row.dataset.scalbum != null) { scOpenAlbum(scShown[+row.dataset.scalbum]); return; }
   if (row && row.dataset.i != null) { playStation(listed[+row.dataset.i], false, listed.slice()); return; }
   const trk = e.target.closest('.trk');
   if (trk && trk.dataset.t != null && !trk.classList.contains('off')) bcPlayAlbum(bcAlbum, +trk.dataset.t);
+  if (trk && trk.dataset.sct != null && !trk.classList.contains('off')) scPlayAlbum(scAlbum, +trk.dataset.sct);
 });
 els.form.addEventListener('submit', e => { e.preventDefault(); els.q.blur(); runSearch(els.q.value); });
 els.q.addEventListener('input', () => { els.clearQ.hidden = !els.q.value; });
@@ -1685,7 +1706,7 @@ async function bcShuffleAll() {
 let bcPre = null;
 function bcPrefetch() {
   if (!bc || !bc.shuffle || bc.i < bc.queue.length - 1 || bcPre) return;
-  bcPre = bcRandomTrack().then(t => { if (t && bc && bc.shuffle) bc.queue.push(t); bcPre = null; });
+  bcPre = (bc.pick || bcRandomTrack)().then(t => { if (t && bc && bc.shuffle) bc.queue.push(t); bcPre = null; });
 }
 async function bcNext() {
   if (!bc) return;
@@ -1698,11 +1719,11 @@ async function bcNext() {
 }
 function bcHeard() {
   const t = bcTrack();
-  if (!t || bc.heardUrl === t.url) return;
-  bc.heardUrl = t.url;
+  if (!t || bc.heardUrl === (t.sc || t.url)) return;
+  bc.heardUrl = t.sc || t.url;
   const name = t.artist + ' – ' + t.title;
   if (!heard[0] || songKey(heard[0].song) !== songKey(name)) {
-    heard.unshift({ song: name, station: 'Bandcamp · ' + t.album, at: Date.now() });
+    heard.unshift({ song: name, station: (t.sc ? 'SoundCloud · ' : 'Bandcamp · ') + t.album, at: Date.now() });
     heard = heard.slice(0, 60);
     safeSet('rw_heard', JSON.stringify(heard));
   }
@@ -1714,18 +1735,34 @@ async function bcPlayHit(t) {
 function bcGo(pos) {
   const t = bcTrack();
   if (!t) return;
+  if (t.sc && !(t.url && t.exp - Date.now() > 120e3)) {   // SoundCloud: a fresh link first
+    bc.state = 'starting'; bc.startAt = Date.now(); renderBar();
+    const b = bc;
+    scResolve(t).then(() => { if (bc === b && bcTrack() === t) bcGo(pos); })
+      .catch(e => { diag('soundcloud link FAILED ' + t.title + ': ' + e.message); if (bc === b && bcTrack() === t) { if (bc.i < bc.queue.length - 1 || bc.shuffle || plCtx) bcNext(); else { bc.state = 'ended'; showNotice('Couldn’t get that song from SoundCloud.'); renderBar(); } } });
+    return;
+  }
   songStop();
   bc.startAt = Date.now();
   bc.state = 'starting';
-  diag('bandcamp ' + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
+  diag((t.sc ? 'soundcloud ' : 'bandcamp ') + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
   if (bc.where === 'speaker' && castConnected()) bcLoadSpeaker(pos);
   else { bc.where = 'here'; bcPlayHere(pos); }
-  renderBar(); if (tab === 'bc' && bcAlbum) render();
+  renderBar(); if ((tab === 'bc' && bcAlbum) || (tab === 'sc' && scAlbum)) render();
 }
 function bcPlayHere(pos) {
   const t = bcTrack();
   if (!t) return;
   bc.where = 'here'; bc.state = 'starting';
+  hlsDrop();
+  if (t.mime === 'application/x-mpegURL') {
+    playHls(t.url).then(() => {
+      if (pos) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = pos; } catch (e) {} }, { once: true });
+      audio.play().catch(err => diag('play() refused: ' + err.message));
+    }).catch(e => { diag('hls player FAILED: ' + e.message); bcNext(); });
+    renderBar();
+    return;
+  }
   audio.src = t.url;
   if (pos) audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = pos; } catch (e) {} }, { once: true });
   audio.play().catch(err => diag('play() refused: ' + err.message));
@@ -1737,11 +1774,11 @@ function bcLoadSpeaker(pos) {
   if (!session || !t) return;
   bc.where = 'speaker'; bc.state = 'starting';
   bcClock.start = 0; bcClock.pos = pos || 0; bcClock.paused = true;
-  const info = new chrome.cast.media.MediaInfo(t.url, 'audio/mpeg');
+  const info = new chrome.cast.media.MediaInfo(t.url, t.mime || 'audio/mpeg');
   info.streamType = chrome.cast.media.StreamType.BUFFERED;
   const md = new chrome.cast.media.GenericMediaMetadata();
   md.title = t.title;
-  md.subtitle = t.artist + ' · ' + t.album;
+  md.subtitle = t.artist + (t.album ? ' · ' + t.album : '');
   md.images = [new chrome.cast.Image(t.art || new URL('icon-512.png', location.href).href)];
   info.metadata = md;
   const req = new chrome.cast.media.LoadRequest(info);
@@ -1774,14 +1811,14 @@ function bcStop() {
   const wasSpeaker = bc.where === 'speaker';
   bc = null; bcPre = null;
   if (wasSpeaker && castActive()) ctrl.stop();
-  else { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+  else { hlsDrop(); audio.pause(); audio.removeAttribute('src'); audio.load(); }
 }
 function bcRenderBar(cast, dev) {
   const t = bcTrack();
   els.npName.textContent = t ? t.title : 'Bandcamp';
   els.npArt.src = t && t.art ? t.art : 'icon-192.png';
   els.npHeart.hidden = true;
-  let sub = t ? t.artist + ' · ' + t.album : '', playing = false, busy = false;
+  let sub = t ? t.artist + (t.album ? ' · ' + t.album : '') : '', playing = false, busy = false;
   if (bc.where === 'speaker' && cast) {
     const PS = chrome.cast.media.PlayerState;
     if (bc.state === 'starting' || player.playerState === PS.BUFFERING) { sub = 'Starting on ' + dev + '…' + secsSince(bc.startAt); busy = true; playing = true; }
@@ -1799,7 +1836,7 @@ function bcRenderBar(cast, dev) {
   els.npSub.classList.toggle('live', false);
   els.npArt.classList.toggle('spin', busy);
   barBusy = busy;
-  setLabel(busy ? 'Starting' : bc.state === 'ended' ? 'Finished' : playing ? (plCtx ? 'Playlist' : 'Bandcamp') : 'Paused', playing && !busy);
+  setLabel(busy ? 'Starting' : bc.state === 'ended' ? 'Finished' : playing ? (plCtx ? 'Playlist' : t && t.sc ? 'SoundCloud' : 'Bandcamp') : 'Paused', playing && !busy);
   els.playBtn.disabled = false;
   els.playIcon.innerHTML = playing ? '<path d="M7 5h4v14H7zm6 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
 }
@@ -1813,6 +1850,206 @@ $('bcForget').addEventListener('click', () => {
   render();
 });
 $('bcDlg').addEventListener('click', e => { if (e.target === $('bcDlg')) $('bcDlg').close(); });
+
+// ── SoundCloud: your likes, uploads and playlists (Android and Windows apps) ─
+// Read the way soundcloud.com itself does (its public web key, found on its own page). Songs come as
+// HLS streams straight from SoundCloud, so the speaker fetches them itself. Links last about 2 hours,
+// so each song gets a fresh one when it starts.
+let scUser = safeGet('rw_sc_user') || '';
+let scItems = readJSON('rw_sc_items', []);   // [{ id, title, artist, art, kind: 'likes'|'uploads'|'pl', pid, count, tracks? }]
+let scBusy = '', scFilter = '', scAlbum = null, scShown = [], scHits = [], scMore = 150;
+let scCid = safeGet('rw_sc_cid') || '';
+const SC_API = 'https://api-v2.soundcloud.com';
+async function scKey(fresh) {
+  if (scCid && !fresh) return scCid;
+  const page = await get('https://soundcloud.com/');
+  const js = (page.text.match(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js/g) || []).reverse();
+  for (const u of js) {
+    try { const m = (await get(u)).text.match(/client_id[:=]"?([A-Za-z0-9]{32})/); if (m) { scCid = m[1]; safeSet('rw_sc_cid', scCid); return scCid; } } catch (e) {}
+  }
+  throw new Error('Couldn’t reach SoundCloud.');
+}
+async function scGet(url) {
+  for (let k = 0; k < 2; k++) {
+    const id = await scKey(k > 0);
+    const r = await get(url + (url.includes('?') ? '&' : '?') + 'client_id=' + id, { headers: { Accept: 'application/json' } });
+    if ((r.status === 401 || r.status === 403) && k === 0) continue;   // SoundCloud changed its key: find the new one
+    if (r.status >= 400) throw new Error('HTTP ' + r.status);
+    return JSON.parse(r.text);
+  }
+}
+const scArt = (t, user) => String(t && t.artwork_url || user && user.avatar_url || '').replace('-large.', '-t500x500.');
+function scTrack(t, n, album, au) {
+  return {
+    sc: t.id, n, title: t.title, artist: (t.publisher_metadata && t.publisher_metadata.artist) || (t.user && t.user.username) || '',
+    album, art: scArt(t, t.user), dur: (t.full_duration || t.duration || 0) / 1000, au, url: null,
+    off: t.policy === 'BLOCK' || !(t.media && t.media.transcodings && t.media.transcodings.length), preview: t.policy === 'SNIP',
+  };
+}
+async function scPages(url, max) {
+  const out = [];
+  let next = url;
+  for (let p = 0; next && p < max; p++) {
+    const d = await scGet(next);
+    out.push(...(d.collection || []));
+    next = d.next_href || null;
+    scBusy = 'Loading SoundCloud… ' + out.length; render();
+  }
+  return out;
+}
+async function scLoad() {
+  if (scBusy) return;
+  scBusy = 'Loading SoundCloud…'; render();
+  try {
+    const u = await scGet(SC_API + '/resolve?url=' + encodeURIComponent('https://soundcloud.com/' + scUser));
+    if (!u || u.kind !== 'user') throw new Error('That SoundCloud page wasn’t found.');
+    const likes = await scPages(SC_API + '/users/' + u.id + '/likes?limit=200&linked_partitioning=1', 40);
+    const ups = await scPages(SC_API + '/users/' + u.id + '/tracks?limit=200&linked_partitioning=1', 10);
+    const mine = await scPages(SC_API + '/users/' + u.id + '/playlists?limit=50&linked_partitioning=1', 10);
+    const likedT = likes.filter(x => x.track).map((x, i) => scTrack(x.track, i + 1, 'Liked songs', 'sc:likes'));
+    const upT = ups.map((t, i) => scTrack(t, i + 1, 'Uploads', 'sc:uploads'));
+    const pl = p => ({ id: 'p' + p.id, pid: p.id, title: p.title, artist: p.user && p.user.username || '', art: scArt(p, p.user) || (p.tracks && p.tracks[0] && scArt(p.tracks[0], p.user)), kind: 'pl', count: p.track_count || 0, album: p.is_album });
+    const items = [];
+    if (likedT.length) items.push({ id: 'likes', title: 'Liked songs', artist: u.username, art: (likedT[0] && likedT[0].art) || scArt(null, u), kind: 'likes', count: likedT.length, tracks: likedT });
+    if (upT.length) items.push({ id: 'uploads', title: 'Uploads', artist: u.username, art: scArt(null, u), kind: 'uploads', count: upT.length, tracks: upT });
+    mine.forEach(p => items.push(pl(p)));
+    likes.filter(x => x.playlist).forEach(x => items.push(pl(x.playlist)));
+    scItems = items.filter((x, i) => items.findIndex(y => y.id === x.id) === i);
+    safeSet('rw_sc_items', JSON.stringify(scItems));
+    diag('soundcloud: ' + likedT.length + ' likes, ' + upT.length + ' uploads, ' + scItems.filter(x => x.kind === 'pl').length + ' playlists for ' + u.username);
+  } catch (e) {
+    diag('soundcloud load FAILED: ' + e.message);
+    showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load SoundCloud. Check the name and try again.');
+  }
+  scBusy = ''; render();
+}
+async function scTracks(item) {
+  if (item.tracks) return item.tracks;
+  const d = await scGet(SC_API + '/playlists/' + item.pid + '?representation=full');
+  let list = d.tracks || [];
+  const stubs = list.filter(t => !t.title).map(t => t.id);
+  for (let i = 0; i < stubs.length; i += 50) {
+    const full = await scGet(SC_API + '/tracks?ids=' + stubs.slice(i, i + 50).join(','));
+    const by = new Map((full || []).map(t => [t.id, t]));
+    list = list.map(t => by.get(t.id) || t);
+  }
+  return list.filter(t => t.title).map((t, i) => scTrack(t, i + 1, item.title, 'sc:' + item.id));
+}
+// A fresh stream link for a song (AAC over HLS: plays on speakers and in the app).
+async function scResolve(t) {
+  if (t.url && t.exp - Date.now() > 120e3) return t;
+  const d = await scGet(SC_API + '/tracks/' + t.sc);
+  const tr = (d.media && d.media.transcodings) || [];
+  const pick = tr.find(c => c.format.protocol === 'hls' && /mp4a|aac/.test(c.format.mime_type) && /160/.test(c.preset))
+    || tr.find(c => c.format.protocol === 'hls' && /mp4a|aac/.test(c.format.mime_type))
+    || tr.find(c => c.format.protocol === 'progressive')
+    || tr.find(c => c.format.protocol === 'hls' && /mpegurl|mpeg/.test(c.format.mime_type));
+  if (!pick) throw new Error('no stream');
+  const s = await scGet(pick.url + (d.track_authorization ? '?track_authorization=' + encodeURIComponent(d.track_authorization) : ''));
+  if (!s || !s.url) throw new Error('no link');
+  t.url = s.url;
+  t.mime = pick.format.protocol === 'hls' ? 'application/x-mpegURL' : 'audio/mpeg';
+  const exp = s.url.match(/[?&](?:Expires|expires)=(\d+)/);
+  t.exp = exp ? +exp[1] * 1000 : Date.now() + 3600e3;
+  return t;
+}
+const scPlayable = t => t && t.sc && !t.off;
+function scSongs() { const all = []; scItems.forEach(x => (x.tracks || []).forEach(t => all.push(t))); return all; }
+function scView() {
+  if (!NATIVE) return '<div class="empty">SoundCloud needs the RadioWizard app for Android or Windows (SoundCloud blocks websites).</div>';
+  let h = '';
+  if (scAlbum) {
+    const a = scAlbum, playing = bcTrack();
+    h += '<div class="bcHead"><button class="btn" id="scBack">‹ Back</button></div>';
+    h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt="" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
+      + '<button class="btn main" id="scPlayAll">▶ Play</button> <button class="btn" id="scShuf">🔀 Shuffle</button> <button class="btn" id="scAddAll">＋ Playlist</button></div></div>';
+    if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this. Try again.' : 'Opening…') + '</div>';
+    else h += '<ul class="list">' + a.tracks.map((t, i) => '<li class="trk' + (t.off ? ' off' : '') + (playing && playing.sc === t.sc ? ' now' : '') + '" data-sct="' + i + '"><span class="n">' + t.n + '</span><span class="t">' + esc(t.title)
+      + (a.kind === 'uploads' ? '' : '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small>') + '</span><span class="d">' + (t.off ? 'not streamable' : (t.preview ? 'preview · ' : '') + bcTime(t.dur)) + '</span>'
+      + (t.off ? '' : '<button class="add" data-scaddt="' + i + '" title="Add to a playlist">＋</button>') + '</li>').join('') + '</ul>';
+    return h;
+  }
+  if (!scItems.length && !scBusy) {
+    return '<div class="bcForm"><div>Play and cast your SoundCloud likes, uploads and playlists.</div>'
+      + '<input class="field" id="scName" placeholder="Your SoundCloud name (soundcloud.com/…)" value="' + esc(scUser) + '" autocapitalize="off" autocomplete="off">'
+      + '<button class="btn main" id="scGo">Load my SoundCloud</button>'
+      + '<div class="hint" style="margin-top:0">Reads what your SoundCloud profile shows (likes, uploads, playlists). No sign-in needed. The speaker plays straight from SoundCloud.</div></div>';
+  }
+  h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b> · ' + (scBusy ? esc(scBusy) : scSongs().length + ' songs') + '</div>'
+    + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
+  h += '<div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
+    + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>';
+  h += '<ul class="list" id="scList" style="margin-top:10px">' + scListHtml() + '</ul>';
+  return h;
+}
+function scListHtml() {
+  const f = scFilter.toLowerCase().trim(), playing = bcTrack();
+  scHits = f.length > 1 ? scSongs().filter(t => !t.off && (t.title + ' ' + t.artist).toLowerCase().includes(f)).filter((t, i, a) => a.findIndex(y => y.sc === t.sc) === i).slice(0, 200) : [];
+  const songs = scHits.length ? '<li class="songHits"><h4>Songs · ' + scHits.length + (scHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + scHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-schit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-scadds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Lists</h4></li>' : '';
+  scShown = f ? scItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : scItems;
+  return songs + scShown.slice(0, scMore).map((x, i) => '<li class="st" data-scalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.kind === 'pl' ? x.artist + ' · ' + (x.album ? 'album' : 'playlist') : x.kind === 'likes' ? 'your likes' : 'your uploads') + ' · ' + x.count + ' song' + (x.count === 1 ? '' : 's') + '</div></div></li>').join('')
+    + (scShown.length > scMore ? '<li><button class="chip more" id="scMoreBtn">Show more (' + (scShown.length - scMore) + ')</button></li>' : '')
+    + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">Nothing matches.</li>' : '');
+}
+function scWire() {
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on('scGo', () => { const n = ($('scName').value || '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n) return; scUser = n; safeSet('rw_sc_user', scUser); scLoad(); });
+  on('scBack', () => { scAlbum = null; render(); });
+  on('scPlayAll', () => scPlayAlbum(scAlbum, 0));
+  on('scShuf', () => scPlayAlbum(scAlbum, -1));
+  on('scAddAll', () => scAlbum && scAlbum.tracks && plAsk(scAlbum.tracks.filter(t => !t.off).map(bcItem), scAlbum.title));
+  on('scShufAll', () => scShuffleAll());
+  on('scMenu', () => $('scDlg').showModal());
+  on('scMoreBtn', () => { scMore += 150; $('scList').innerHTML = scListHtml(); scWire(); });
+  const f = $('scFilter');
+  if (f) f.oninput = () => { scFilter = f.value; scMore = 150; $('scFilterX').hidden = !scFilter; $('scList').innerHTML = scListHtml(); scWire(); };
+  on('scFilterX', () => { scFilter = ''; scMore = 150; if (f) { f.value = ''; f.focus(); } $('scFilterX').hidden = true; $('scList').innerHTML = scListHtml(); scWire(); });
+}
+async function scOpenAlbum(item) {
+  if (!item) return;
+  scAlbum = Object.assign({}, item);
+  render(); window.scrollTo(0, 0);
+  try { scAlbum.tracks = await scTracks(item); } catch (e) { diag('soundcloud list FAILED ' + item.id + ': ' + e.message); scAlbum.err = true; }
+  if (tab === 'sc' && scAlbum && scAlbum.id === item.id) render();
+}
+function scPlayAlbum(album, from) {
+  if (!album || !album.tracks) return;
+  const ok = album.tracks.filter(scPlayable);
+  if (from === -1) bcStart(bcShuffle(ok.slice()), 0, false);
+  else { const t = album.tracks[from]; bcStart(ok, Math.max(0, ok.indexOf(t)), false); }
+}
+async function scRandomTrack() {
+  const likes = scItems.find(x => x.kind === 'likes');
+  const pool = (likes ? likes.tracks : scSongs()).filter(scPlayable);
+  return pool.length ? Object.assign({}, pool[Math.floor(Math.random() * pool.length)]) : null;
+}
+async function scShuffleAll() {
+  const t = await scRandomTrack();
+  if (!t) { showNotice('No SoundCloud songs to shuffle yet.'); return; }
+  bcStart([t], 0, true);
+  if (bc) bc.pick = scRandomTrack;
+}
+// Plays HLS links in the app itself: natively where the system can, otherwise with hls.js.
+let scHls = null, hlsLib = null;
+function hlsDrop() { if (scHls) { try { scHls.destroy(); } catch (e) {} scHls = null; } }
+async function playHls(url) {
+  hlsDrop();
+  if (audio.canPlayType('application/vnd.apple.mpegurl')) { audio.src = url; return; }
+  if (!hlsLib) hlsLib = new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.7.4/hls.min.js'; s.onload = () => ok(window.Hls); s.onerror = () => { hlsLib = null; no(new Error('hls.js didn’t load')); }; document.head.appendChild(s); });
+  const Hls = await hlsLib;
+  scHls = new Hls();
+  scHls.loadSource(url);
+  scHls.attachMedia(audio);
+}
+$('scRefresh').addEventListener('click', () => { $('scDlg').close(); scLoad(); });
+$('scForget').addEventListener('click', () => {
+  $('scDlg').close();
+  scItems = []; scUser = ''; scAlbum = null;
+  ['rw_sc_items', 'rw_sc_user'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  render();
+});
+$('scDlg').addEventListener('click', e => { if (e.target === $('scDlg')) $('scDlg').close(); });
 
 // ── Song info, cover art, time bar, Recently played and Saved songs ─
 // Radio: the song title comes from the station itself. The apps read it straight from the stream ("ICY" titles);
@@ -2113,6 +2350,7 @@ function goPrev() {
 }
 function goShuffle() {
   if (plCtx) { const pl = pls.find(x => x.id === plCtx.id); if (pl) playPlaylist(pl, 0, true); return; }
+  if (tab === 'sc' || (bc && bcTrack() && bcTrack().sc)) { scShuffleAll(); return; }
   if (tab === 'bc' || bc) { bcShuffleAll(); return; }
   const list = tab === 'favs' ? favs : tab === 'recent' ? recent : results.filter(s => s.check !== 'dead');
   if (!list.length) { showNotice('Search for stations first, then shuffle plays a random one.'); return; }
@@ -2180,8 +2418,8 @@ function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.
 let pls = readJSON('rw_pls', []);
 let plOpen = null, plCtx = null;   // plCtx = { id, order: [item indexes], i }
 const savePls = () => { try { localStorage.setItem('rw_pls', JSON.stringify(pls)); } catch (e) { showNotice('This device is out of space for playlists.'); } autoSave('pls'); };
-const plKey = it => it.k === 'bc' ? 'bc|' + it.au + '|' + it.n + '|' + it.title : 'radio|' + it.st.key;
-function bcItem(t) { return { k: 'bc', title: t.title, artist: t.artist, album: t.album, art: t.art, dur: t.dur, n: t.n, au: t.au }; }
+const plKey = it => it.k === 'bc' ? (it.sc ? 'sc|' + it.sc : 'bc|' + it.au + '|' + it.n + '|' + it.title) : 'radio|' + it.st.key;
+function bcItem(t) { const it = { k: 'bc', title: t.title, artist: t.artist, album: t.album, art: t.art, dur: t.dur, n: t.n, au: t.au }; if (t.sc) it.sc = t.sc; return it; }
 
 let plPending = null;
 function plAsk(items, what) {
@@ -2294,6 +2532,7 @@ function playPlaylist(pl, from, shuffle) {
   plGo();
 }
 async function plResolve(it) {
+  if (it.sc) return { sc: it.sc, n: it.n, title: it.title, artist: it.artist, album: it.album, art: it.art, dur: it.dur, au: it.au, url: null };   // its link is fetched when it starts
   const tracks = await bcTracks({ url: it.au, title: it.album, artist: it.artist, art: it.art });
   const want = songKey(it.title);
   return tracks.find(t => t.url && songKey(t.title) === want && t.n === it.n) || tracks.find(t => t.url && songKey(t.title) === want) || null;
