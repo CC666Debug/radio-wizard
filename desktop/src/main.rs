@@ -273,6 +273,24 @@ async fn soundcloud_login(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Opens a web link in the PC's own browser (the app window ignores links meant for a new window).
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) || url.contains('"') {
+        return Err("only web links".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).creation_flags(0x0800_0000).spawn().map_err(err)?;
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("xdg-open").arg(&url).spawn().map_err(err)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn soundcloud_logout() {
     let _ = fs::remove_file(app_dir().join("soundcloud-token.txt"));
@@ -763,7 +781,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, icy, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
+            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

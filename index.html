@@ -566,7 +566,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.20.0';
+const VERSION = '1.20.1';
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
@@ -1403,7 +1403,7 @@ function choose(st) {
   current = keep(st);
   if (st.play) current.play = st.play;
   safeSet('rw_current', JSON.stringify(current));
-  addRecent(st);
+  if (!plCtx) addRecent(st);   // a station inside a playlist: Recent shows the playlist instead
   const rbSrc = st.srcs.find(s => s.src === 'rb' && s.rid);
   if (rbSrc) rb('/json/url/' + rbSrc.rid).catch(() => {});   // counts the play for Radio Browser
 }

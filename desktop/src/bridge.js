@@ -6,6 +6,15 @@
   const inv = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args || {});
   const fire = e => { if (window.AndroidCastEvent) window.AndroidCastEvent(e); };
   const http = (id, r) => { if (window.AndroidHttp) window.AndroidHttp(id, r); };
+  // Links that open a new window (YouTube, Spotify, Bandcamp… in the song lists) go to the PC's browser.
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a || !/^https?:/i.test(a.href) || (a.target !== '_blank' && a.origin === location.origin)) return;
+    e.preventDefault();
+    inv('open_url', { url: a.href }).catch(() => {});
+  }, true);
+  const origOpen = window.open;
+  window.open = (u, t, f) => { if (u && /^https?:/i.test(String(u))) { inv('open_url', { url: String(u) }).catch(() => {}); return null; } return origOpen ? origOpen.call(window, u, t, f) : null; };
   const result = (id, p) => p.then(() => fire({ type: 'result', id, ok: true }), e => fire({ type: 'result', id, ok: false, error: String(e) }));
 
   // ── Following the speaker: the app is asked every second, and changes become the usual events ──
