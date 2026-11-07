@@ -124,7 +124,12 @@
   .picks { margin-top: 14px; }
   .picks h2 { font-size: .95rem; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
   .picks .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .picks .chip { font-size: .9rem; padding: 7px 12px; color: var(--text); }
+  .picks .chip { font-size: .9rem; padding: 7px 12px; color: var(--text); -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .picksHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .picksHead h2 { margin: 0 auto 0 0 !important; }
+  .picks .chips.selecting .chip { border-style: dashed; }
+  .picks .chip.sel { border: 1px solid var(--accent) !important; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+  .picks .chip:disabled { opacity: .45; }
   .hint { color: var(--muted); font-size: .85rem; margin-top: 16px; line-height: 1.5; }
 
   ul.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -535,7 +540,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.15.1';
+const VERSION = '1.16.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -950,6 +955,7 @@ let searchTok = 0, lastQuery = '', srcState = {}, showDead = false, shown = 40;
 function runSearch(q) {
   q = q.trim();
   if (!q) return;
+  if (q.length <= 40 && !picks.some(p => p.toLowerCase() === q.toLowerCase())) { picks.push(q.toLowerCase()); safeSet('rw_picks', JSON.stringify(picks)); }
   lastQuery = q; showDead = false; shown = 40;
   const tok = ++searchTok;
   results = []; byUrl = new Map(); byName = new Map(); checkQueue = [];
@@ -1009,7 +1015,10 @@ let tab = 'search';
 function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; setTabs(); render(); window.scrollTo(0, 0); }));
 
+// Front-page pills: the starters plus every search you make; only removed by holding a pill → Delete.
+let pickSel = null;   // Set while picking pills to delete
 const PICKS = ['black metal', 'pagan', 'folk', 'synthwave', 'darkwave', 'halloween', 'gothic', 'metal', 'ambient', 'dark ambient', 'industrial', 'post-punk', 'medieval', 'celtic', 'doom', 'lofi', 'jazz', 'classical', 'blues', '80s'];
+let picks = readJSON('rw_picks', null) || PICKS.slice();
 let listed = [];   // stations on screen, by index
 function stationRow(st, i) {
   const meta = [st.country, st.tags.slice(0, 3).join(', '), st.codec && (st.codec.toUpperCase() + (st.bitrate ? ' ' + st.bitrate : ''))].filter(Boolean).join(' · ');
@@ -1029,7 +1038,10 @@ function render() {
   listed = [];
   if (tab === 'search') {
     if (!lastQuery) {
-      h += '<div class="picks"><h2>Try one</h2><div class="chips">' + PICKS.map(p => '<button class="chip" data-pick="' + esc(p) + '">' + esc(p) + '</button>').join('') + '</div></div>';
+      h += '<div class="picks"><div class="picksHead"><h2>' + (pickSel ? pickSel.size + ' picked' : 'Try one') + '</h2>'
+        + (pickSel ? '<button class="chip" id="pickDel"' + (pickSel.size ? '' : ' disabled') + '>🗑️ Delete</button><button class="chip" id="pickAll">All</button><button class="chip" id="pickCancel">Cancel</button>' : '') + '</div>'
+        + '<div class="chips' + (pickSel ? ' selecting' : '') + '">' + picks.map(p => '<button class="chip' + (pickSel && pickSel.has(p) ? ' sel' : '') + '" data-pick="' + esc(p) + '">' + (pickSel && pickSel.has(p) ? '✓ ' : '') + esc(p) + '</button>').join('') + '</div>'
+        + (pickSel ? '' : '<div class="hint" style="margin-top:6px;font-size:.75rem">Your searches become pills here. Hold one to pick and delete.</div>') + '</div>';
       h += '<div class="hint">RadioWizard searches ' + SOURCES.filter(usable).length + ' radio directories at once' + (NATIVE ? ' and tests every station before it’s listed' : '') + '.'
         + (NATIVE ? '' : '<br>TuneIn, SHOUTcast, Radio Garden, radio.net and OnlineRadioBox only work in the RadioWizard apps for Android and Windows (they block websites).') + '</div>';
     } else {
@@ -1080,9 +1092,33 @@ function render() {
   if (tab === 'pl') plWire();
   const fs = $('favSort'); if (fs) fs.onchange = () => { favSort = fs.value; safeSet('rw_favsort', favSort); render(); };
 }
+// Hold (or right-click) a pill to start picking pills to delete.
+let pickHeld = false, pickTimer = 0;
+function pickStart(v) { pickSel = new Set([v]); pickHeld = true; render(); }
+els.main.addEventListener('pointerdown', e => {
+  const b = e.target.closest('[data-pick]'); if (!b) return;
+  if (pickSel) { pickHeld = false; return; }
+  if (e.button > 0) return;
+  pickHeld = false; clearTimeout(pickTimer);
+  const x = e.clientX, y = e.clientY, v = b.dataset.pick;
+  const stop = () => { clearTimeout(pickTimer); removeEventListener('pointerup', stop); removeEventListener('pointercancel', stop); removeEventListener('pointermove', mv); };
+  const mv = ev => { if (Math.abs(ev.clientX - x) > 10 || Math.abs(ev.clientY - y) > 10) stop(); };
+  addEventListener('pointerup', stop); addEventListener('pointercancel', stop); addEventListener('pointermove', mv);
+  pickTimer = setTimeout(() => { stop(); if (navigator.vibrate) navigator.vibrate(20); pickStart(v); }, 550);
+});
+els.main.addEventListener('contextmenu', e => { const b = e.target.closest('[data-pick]'); if (!b) return; e.preventDefault(); if (!pickSel) { clearTimeout(pickTimer); pickStart(b.dataset.pick); } });
 els.main.addEventListener('click', e => {
+  if (e.target.id === 'pickCancel') { pickSel = null; render(); return; }
+  if (e.target.id === 'pickAll') { pickSel = new Set(pickSel && pickSel.size === picks.length ? [] : picks); render(); return; }
+  if (e.target.id === 'pickDel' && pickSel) {
+    const b = e.target;
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again to delete ' + pickSel.size; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '🗑️ Delete'; } }, 4000); return; }
+    picks = picks.filter(p => !pickSel.has(p)); safeSet('rw_picks', JSON.stringify(picks)); pickSel = null; render(); return;
+  }
   if (MS[tab] && msClick(e)) return;
   const pick = e.target.closest('[data-pick]');
+  if (pick && pickHeld) { pickHeld = false; return; }
+  if (pick && pickSel) { const v = pick.dataset.pick; if (pickSel.has(v)) pickSel.delete(v); else pickSel.add(v); render(); return; }
   if (pick) { els.q.value = pick.dataset.pick; els.clearQ.hidden = false; runSearch(pick.dataset.pick); return; }
   const heart = e.target.closest('[data-heart]');
   if (heart) { toggleFav(listed[+heart.dataset.heart]); return; }
@@ -1942,6 +1978,8 @@ async function scGet(url) {
     const id = await scKey(k > 0);
     const r = await get(url + (url.includes('?') ? '&' : '?') + 'client_id=' + id, { headers: { Accept: 'application/json' } });
     if ((r.status === 401 || r.status === 403) && k === 0) continue;   // SoundCloud changed its key: find the new one
+    if ((r.status === 401 || r.status === 403) && scSignedIn) { const e = new Error('SoundCloud refused the saved sign-in (HTTP ' + r.status + ')'); e.signin = true; throw e; }
+    if (r.status === 404 && url.includes('/resolve?')) throw new Error('No SoundCloud page called “' + scUser + '” was found.');
     if (r.status >= 400) throw new Error('HTTP ' + r.status);
     return JSON.parse(r.text);
   }
@@ -1977,9 +2015,16 @@ async function scLoad() {
     }
     if (!u) u = await scGet(SC_API + '/resolve?url=' + encodeURIComponent('https://soundcloud.com/' + scUser));
     if (!u || u.kind !== 'user') throw new Error('That SoundCloud page wasn’t found.');
-    const likes = await scPages(SC_API + '/users/' + u.id + '/likes?limit=200&linked_partitioning=1', 40);
-    const ups = await scPages(SC_API + '/users/' + u.id + '/tracks?limit=200&linked_partitioning=1', 10);
-    const mine = await scPages(SC_API + '/users/' + u.id + '/playlists?limit=50&linked_partitioning=1', 10);
+    // Each part loads on its own: one failing (e.g. likes kept private) mustn't wipe out the rest.
+    const missed = [];
+    const part = async (what, url, max) => {
+      try { return await scPages(url, max); }
+      catch (e) { if (e.signin) throw e; diag('soundcloud ' + what + ' FAILED: ' + e.message); missed.push(what); return []; }
+    };
+    const likes = await part('likes', SC_API + '/users/' + u.id + '/likes?limit=200&linked_partitioning=1', 40);
+    const ups = await part('uploads', SC_API + '/users/' + u.id + '/tracks?limit=200&linked_partitioning=1', 10);
+    const mine = await part('playlists', SC_API + '/users/' + u.id + '/playlists?limit=50&linked_partitioning=1', 10);
+    if (missed.length === 3) throw new Error('SoundCloud didn’t answer. Try again in a moment.');
     const likedT = likes.filter(x => x.track).map((x, i) => scTrack(x.track, i + 1, 'Liked songs', 'sc:likes'));
     const upT = ups.map((t, i) => scTrack(t, i + 1, 'Uploads', 'sc:uploads'));
     const pl = p => ({ id: 'p' + p.id, pid: p.id, title: p.title, artist: p.user && p.user.username || '', art: scArt(p, p.user) || (p.tracks && p.tracks[0] && scArt(p.tracks[0], p.user)), kind: 'pl', count: p.track_count || 0, album: p.is_album });
@@ -1988,12 +2033,15 @@ async function scLoad() {
     if (upT.length) items.push({ id: 'uploads', title: 'Uploads', artist: u.username, art: scArt(null, u), kind: 'uploads', count: upT.length, tracks: upT });
     mine.forEach(p => items.push(pl(p)));
     likes.filter(x => x.playlist).forEach(x => items.push(pl(x.playlist)));
+    if (missed.length) items.push(...scItems);   // keep what loaded last time for the parts that failed
     scItems = items.filter((x, i) => items.findIndex(y => y.id === x.id) === i);
     safeSet('rw_sc_items', JSON.stringify(scItems));
+    if (missed.length) showNotice('SoundCloud didn’t send your ' + missed.join(' and ') + ' this time (kept the last ones). The rest loaded.' + (missed.includes('likes') && !scSignedIn ? ' If your likes are private, sign in to see them.' : ''));
     diag('soundcloud: ' + likedT.length + ' likes, ' + upT.length + ' uploads, ' + scItems.filter(x => x.kind === 'pl').length + ' playlists for ' + u.username);
   } catch (e) {
     diag('soundcloud load FAILED: ' + e.message);
-    showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load SoundCloud. Check the name and try again.');
+    if (e.signin) scSigninLost();
+    else showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load SoundCloud (' + (e.message || 'no answer') + '). Try again in a moment.');
   }
   scBusy = ''; render();
 }
@@ -2028,6 +2076,11 @@ async function scResolve(t) {
   return t;
 }
 const scPlayable = t => t && t.sc && !t.off;
+// Song count for the header: liked/uploaded songs plus every playlist's size (playlists load their songs only when opened).
+function scCount() {
+  const songs = scItems.reduce((n, x) => n + (x.kind === 'pl' ? x.count || 0 : (x.tracks || []).length), 0);
+  return songs + ' song' + (songs === 1 ? '' : 's') + ' in ' + scItems.length + ' list' + (scItems.length === 1 ? '' : 's');
+}
 function scSongs() { const all = []; scItems.forEach(x => (x.tracks || []).forEach(t => all.push(t))); return all; }
 function scView() {
   if (!NATIVE) return '<div class="empty">SoundCloud needs the RadioWizard app for Android or Windows (SoundCloud blocks websites).</div>';
@@ -2050,7 +2103,7 @@ function scView() {
       + (!scSignedIn && SC_LOGIN() ? '<button class="btn" id="scLogin">Sign in to SoundCloud (optional)</button>'
         + '<div class="hint" style="margin-top:0">Type your name to load what your profile shows, or sign in to also get private likes and playlists (and full songs with Go+). Your password goes to SoundCloud’s own page and stays on this device.</div>' : '') + '</div>';
   }
-  h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scSongs().length + ' songs') + '</div>'
+  h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scCount()) + '</div>'
     + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
   h += '<div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
     + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>';
@@ -2086,7 +2139,7 @@ async function scOpenAlbum(item) {
   if (!item) return;
   scAlbum = Object.assign({}, item);
   render(); window.scrollTo(0, 0);
-  try { scAlbum.tracks = await scTracks(item); } catch (e) { diag('soundcloud list FAILED ' + item.id + ': ' + e.message); scAlbum.err = true; }
+  try { scAlbum.tracks = await scTracks(item); } catch (e) { diag('soundcloud list FAILED ' + item.id + ': ' + e.message); scAlbum.err = !e.signin; if (e.signin) scSigninLost(item); }
   if (tab === 'sc' && scAlbum && scAlbum.id === item.id) render();
 }
 function scPlayAlbum(album, from) {
@@ -2134,10 +2187,25 @@ function scMenuOpen() {
   $('scForget').textContent = scSignedIn ? 'Sign out' : 'Forget my SoundCloud';
   $('scDlg').showModal();
 }
+// SoundCloud turned down the sign-in RW saved: SoundCloud swaps it now and then while your SoundCloud session
+// itself stays good. Re-run the sign-in window: SoundCloud signs straight back in, the window catches the
+// fresh sign-in and closes by itself, and whatever failed loads again. No sign-out, no password.
+let scLostShown = 0, scRetryAlbum = null;
+function scSigninLost(item) {
+  if (item) scRetryAlbum = item;
+  if (Date.now() - scLostShown < 30000) { diag('soundcloud sign-in refused again (refresh already tried)'); return; }
+  scLostShown = Date.now();
+  diag('soundcloud refused the saved sign-in → refreshing it');
+  if (!SC_LOGIN()) { showNotice('SoundCloud didn’t accept the saved sign-in. Sign out and in again (⋯).'); return; }
+  showNotice('Refreshing your SoundCloud sign-in…');
+  window.AndroidCast.soundcloudLogin();
+}
 window.onSoundcloudLogin = ok => {
   diag('soundcloud sign-in: ' + (ok ? 'yes' : 'closed'));
   if (!ok) return;
   scSignedIn = true; safeSet('rw_sc_in', 't');
+  const again = scRetryAlbum; scRetryAlbum = null;
+  if (again && scAlbum && scAlbum.id === again.id) { scOpenAlbum(again); return; }
   scLoad();
 };
 $('scDlg').addEventListener('click', e => { if (e.target === $('scDlg')) $('scDlg').close(); });
