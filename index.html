@@ -153,9 +153,12 @@
   .more { display: block; margin: 12px auto; }
   .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
 
+  /* Info messages float over the page (bottom, above the back-to-top button) so scrolling never hides them. */
   .notice {
-    margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line);
-    font-size: .9rem; display: flex; gap: 10px; align-items: flex-start;
+    position: fixed; z-index: 7; left: 50%; transform: translateX(-50%); width: min(720px, calc(100% - 32px));
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 58px);
+    padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--accent);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .55); font-size: .9rem; display: flex; gap: 10px; align-items: flex-start;
   }
   .notice span { flex: 1; }
   .notice button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 1.1rem; }
@@ -310,7 +313,7 @@
   .trk .d { color: var(--muted); font-size: .8rem; }
   .trk.now { border-color: var(--accent); box-shadow: 0 0 12px var(--glow); }
   .trk.off { opacity: .45; cursor: default; }
-  .subRow { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .subRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .subRow .sub { min-width: 0; }
   .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
   .sHeart.on { color: #ff5c9a; }
@@ -326,6 +329,9 @@
   .pSeek.drag .pTrack i { background: var(--accent); }
   .volRow .iconBtn { font-size: 1.05rem; }
   #songsList { max-height: 60dvh; overflow: auto; }
+  .dragH { cursor: grab; touch-action: none; font-size: 1.25rem; padding: 6px 8px; color: var(--muted); -webkit-user-select: none; user-select: none; }
+  li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); opacity: .95; }
+  li.dragging .dragH { cursor: grabbing; color: var(--accent); }
   li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
   li.song .sTop { display: flex; align-items: center; gap: 6px; }
   li.song .sName { flex: 1; font-weight: 600; }
@@ -459,6 +465,16 @@
     <button type="button" id="plCopy">Copy as text</button>
     <button type="button" id="plDelete">Delete</button>
   </div>
+  <div class="hint" style="margin:12px 0 6px">Sort once (you can still drag after):</div>
+  <div class="row" id="plSort" style="justify-content:flex-start;flex-wrap:wrap">
+    <button type="button" data-sort="title">Title A–Z</button>
+    <button type="button" data-sort="artist">Artist A–Z</button>
+    <button type="button" data-sort="album">Album</button>
+    <button type="button" data-sort="new">Newest added</button>
+    <button type="button" data-sort="old">Oldest added</button>
+    <button type="button" data-sort="kind">Songs, then stations</button>
+    <button type="button" data-sort="rev">Reverse</button>
+  </div>
   <div class="row"><button type="button" class="main" id="plMenuClose">Close</button></div>
 </dialog>
 
@@ -473,7 +489,7 @@
   <ul class="list" id="songsList"></ul>
   <div class="row" id="backupRow" style="justify-content:flex-start"><button type="button" id="savedBackup">⬇️ Back up</button><button type="button" id="savedFolder" hidden>📁 Folder</button><button type="button" id="savedRestore">⬆️ Restore</button><input type="file" id="savedFile" accept=".md,.txt,text/markdown,text/plain" hidden></div>
   <p class="hint" id="backupMsg" style="margin:6px 0 0"></p>
-  <div class="row"><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
+  <div class="row"><button type="button" id="songsClear" hidden>🗑️ Clear</button><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
 </dialog>
 
 <dialog id="bkDlg">
@@ -507,6 +523,7 @@
   <textarea id="diagText" readonly></textarea>
   <div class="row">
     <button type="button" id="gcBtn">Don’t count me</button>
+    <button type="button" id="diagClear">Clear log</button>
     <button type="button" id="diagCopy">Copy log</button>
     <button type="button" class="main" id="diagClose">Close</button>
   </div>
@@ -516,7 +533,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.14.1';
+const VERSION = '1.15.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1044,9 +1061,15 @@ function render() {
   } else {
     const list = recent;
     if (!list.length) h += '<div class="empty">Stations you play show up here.</div>';
+    else h += '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="chip" id="recentClear">🗑️ Clear recent</button></div>';
     h += '<ul class="list" style="margin-top:12px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
   }
   els.main.innerHTML = h;
+  const rc = $('recentClear');
+  if (rc) rc.onclick = () => {
+    if (!rc.dataset.sure) { rc.dataset.sure = '1'; rc.textContent = 'Tap again to clear'; setTimeout(() => { if (rc.isConnected) { delete rc.dataset.sure; rc.textContent = '🗑️ Clear recent'; } }, 4000); return; }
+    recent = []; safeSet('rw_recent', '[]'); render();
+  };
   const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
   const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
   if (tab === 'bc') bcWire();
@@ -1107,7 +1130,8 @@ $('srcDone').addEventListener('click', () => { srcDlg.close(); if (lastQuery) ru
 srcDlg.addEventListener('click', e => { if (e.target === srcDlg) srcDlg.close(); });
 
 // ── Notices ─────────────────────────────────────
-function showNotice(msg) { els.noticeText.textContent = msg; els.notice.hidden = false; }
+let noticeTimer = 0;
+function showNotice(msg) { els.noticeText.textContent = msg; els.notice.hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { els.notice.hidden = true; }, 12000); }
 function hideNotice() { els.notice.hidden = true; failShown = false; }
 // "Isn't playing" notices: a station can still start a few seconds later, so they wait to be sure,
 // and if it plays after all the notice goes away by itself.
@@ -2598,6 +2622,8 @@ function drawSongs() {
     ul.appendChild(li);
   });
   $('songsCopy').hidden = !list.length;
+  $('songsClear').hidden = songsTab !== 'recent' || !list.length;
+  $('songsClear').textContent = '🗑️ Clear';
   $('backupRow').hidden = songsTab !== 'saved';
   $('backupMsg').hidden = songsTab !== 'saved';
 }
@@ -2609,6 +2635,13 @@ document.querySelectorAll('#songsDlg [data-stab]').forEach(b => b.addEventListen
 $('songsBtn').addEventListener('click', () => { drawSongs(); $('songsDlg').showModal(); });
 $('songsClose').addEventListener('click', () => $('songsDlg').close());
 $('songsDlg').addEventListener('click', e => { if (e.target === $('songsDlg')) $('songsDlg').close(); });
+// Clear the recently-played log: first tap asks, second tap (within 4 s) clears.
+$('songsClear').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again to clear'; setTimeout(() => { delete b.dataset.sure; b.textContent = '🗑️ Clear'; }, 4000); return; }
+  delete b.dataset.sure;
+  heard = []; safeSet('rw_heard', '[]'); drawSongs();
+});
 $('songsCopy').addEventListener('click', () => {
   const list = songsTab === 'recent' ? heard : saved;
   const text = '# RadioWizard · ' + (songsTab === 'recent' ? 'recently played' : 'saved songs') + '\n\n' + list.map(x => '- ' + x.song + (x.station ? ' (' + x.station + ')' : '')).join('\n') + '\n';
@@ -2754,7 +2787,7 @@ function plItemRow(it, i, pl) {
   const playing = plCtx && plCtx.id === pl.id && plCtx.order[plCtx.i] === i;
   return '<li class="st' + (playing ? ' now' : '') + '" data-pli="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc((radio ? it.st.img : it.art) || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(title) + '</div><div class="meta">' + esc(sub) + (it.dur ? ' · ' + bcTime(it.dur) : '') + '</div></div>'
-    + '<button class="iconBtn" data-up="' + i + '" title="Move up">▲</button><button class="iconBtn" data-down="' + i + '" title="Move down">▼</button><button class="iconBtn" data-rm="' + i + '" title="Remove">✕</button></li>';
+    + '<button class="iconBtn dragH" data-drag="' + i + '" title="Drag to move">⠿</button><button class="iconBtn" data-rm="' + i + '" title="Remove">✕</button></li>';
 }
 function plView() {
   if (plOpen) {
@@ -2795,14 +2828,51 @@ els.main.addEventListener('click', e => {
   if (open) { plOpen = pls[+open.dataset.plopen].id; render(); window.scrollTo(0, 0); return; }
   const pl = plOpen && pls.find(p => p.id === plOpen);
   if (!pl) return;
-  const up = e.target.closest('[data-up]'), down = e.target.closest('[data-down]'), rm = e.target.closest('[data-rm]');
-  const move = (i, j) => { if (j < 0 || j >= pl.items.length) return; [pl.items[i], pl.items[j]] = [pl.items[j], pl.items[i]]; plCtx = null; savePls(); render(); };
-  if (up) { move(+up.dataset.up, +up.dataset.up - 1); return; }
-  if (down) { move(+down.dataset.down, +down.dataset.down + 1); return; }
+  if (e.target.closest('[data-drag]')) { e.stopPropagation(); return; }
+  const rm = e.target.closest('[data-rm]');
   if (rm) { const [it] = pl.items.splice(+rm.dataset.rm, 1); if (it) markGone('plit', pl.id + '|' + plKey(it)); if (plCtx && plCtx.id === pl.id) plCtx = null; savePls(); render(); return; }
   const row = e.target.closest('[data-pli]');
   if (row) playPlaylist(pl, +row.dataset.pli, false);
 }, true);
+// Drag and drop to reorder a playlist: grab ⠿ (finger or mouse), the row follows, the others make room;
+// near the top/bottom edge the page scrolls by itself.
+els.main.addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-drag]');
+  if (!h || tab !== 'pl' || e.button > 0) return;
+  const pl = plOpen && pls.find(p => p.id === plOpen); if (!pl) return;
+  const li = h.closest('li'), ul = li.parentElement;
+  e.preventDefault();
+  h.setPointerCapture(e.pointerId);
+  const grab = e.clientY - li.getBoundingClientRect().top;
+  let y = e.clientY, raf = 0, done = false;
+  li.classList.add('dragging');
+  const place = () => {
+    li.style.transform = '';
+    const top = li.getBoundingClientRect().top;
+    li.style.transform = 'translateY(' + (y - grab - top) + 'px)';
+    const prev = li.previousElementSibling, next = li.nextElementSibling;
+    if (prev) { const b = prev.getBoundingClientRect(); if (y - grab < b.top + b.height / 2) { ul.insertBefore(li, prev); return place(); } }
+    if (next) { const b = next.getBoundingClientRect(); if (y - grab + li.offsetHeight > b.top + b.height / 2) { ul.insertBefore(next, li); return place(); } }
+  };
+  const tick = () => {
+    if (done) return;
+    const topEdge = (document.querySelector('header.top') || {}).getBoundingClientRect?.().bottom || 0;
+    const v = y < topEdge + 60 ? -Math.min(18, (topEdge + 60 - y) / 3) : y > innerHeight - 60 ? Math.min(18, (y - innerHeight + 60) / 3) : 0;
+    if (v) { scrollBy(0, v); place(); }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  const move = ev => { y = ev.clientY; place(); };
+  const end = () => {
+    done = true; cancelAnimationFrame(raf);
+    h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+    li.classList.remove('dragging'); li.style.transform = '';
+    const order = [...ul.querySelectorAll('[data-pli]')].map(x => +x.dataset.pli);
+    if (order.some((v, i) => v !== i)) { const old = pl.items; pl.items = order.map(i => old[i]); plCtx = null; savePls(); }
+    render();
+  };
+  h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+});
 $('plRename').addEventListener('click', () => {
   const pl = pls.find(p => p.id === plOpen); $('plMenu').close();
   const name = pl && prompt('New name for the playlist', pl.name);
@@ -2820,6 +2890,26 @@ $('plCopy').addEventListener('click', () => {
   if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showNotice('Playlist copied as text.'));
 });
 $('plMenuClose').addEventListener('click', () => $('plMenu').close());
+// Quick ordering for a playlist: one-time sorts (album keeps its track order; radio stations sort by name).
+$('plSort').addEventListener('click', e => {
+  const b = e.target.closest('[data-sort]'); if (!b) return;
+  const pl = pls.find(p => p.id === plOpen); $('plMenu').close();
+  if (!pl || pl.items.length < 2) return;
+  const t = it => (it.k === 'radio' ? it.st.name : it.title) || '', ar = it => (it.k === 'radio' ? it.st.name : it.artist) || '';
+  const al = it => (it.k === 'radio' ? '\uffff' + it.st.name : it.album) || '';
+  const cmp = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+  const ways = {
+    title: (a, b) => cmp(t(a), t(b)),
+    artist: (a, b) => cmp(ar(a), ar(b)) || cmp(al(a), al(b)) || (a.n || 0) - (b.n || 0) || cmp(t(a), t(b)),
+    album: (a, b) => cmp(al(a), al(b)) || (a.n || 0) - (b.n || 0) || cmp(t(a), t(b)),
+    new: (a, b) => (b.at || 0) - (a.at || 0),
+    old: (a, b) => (a.at || 0) - (b.at || 0),
+    kind: (a, b) => (a.k === 'radio') - (b.k === 'radio'),
+  };
+  if (b.dataset.sort === 'rev') pl.items.reverse(); else pl.items.sort(ways[b.dataset.sort]);
+  plCtx = null; savePls(); render();
+  showNotice('Sorted: ' + b.textContent + '.');
+});
 
 function playPlaylist(pl, from, shuffle) {
   if (!pl || !pl.items.length) return;
@@ -3347,6 +3437,7 @@ $('diagCopy').addEventListener('click', () => {
   setTimeout(() => $('diagCopy').textContent = 'Copy log', 1500);
 });
 $('diagClose').addEventListener('click', () => diagDlg.close());
+$('diagClear').addEventListener('click', () => { logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); $('diagText').value = logLines.join(String.fromCharCode(10)); });
 $('gcBtn').addEventListener('click', () => { if (safeGet('skipgc') === 't') localStorage.removeItem('skipgc'); else safeSet('skipgc', 't'); gcLabel(); });
 
 // ── Start ───────────────────────────────────────
