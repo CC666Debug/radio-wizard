@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.21.1';
+const VERSION = '1.22.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1369,6 +1369,10 @@ els.main.addEventListener('click', e => {
   if (addS) { const t = bcHits[+addS.dataset.adds]; plAsk([t], t.title); return; }
   const scAddT = e.target.closest('[data-scaddt]');
   if (scAddT) { const t = scAlbum.tracks[+scAddT.dataset.scaddt]; plAsk([bcItem(t)], t.title); return; }
+  const scAddW = e.target.closest('[data-scaddw]');
+  if (scAddW) { const t = scWeb.list[+scAddW.dataset.scaddw]; if (t) plAsk([bcItem(t)], t.title); return; }
+  const scWebHit = e.target.closest('[data-scweb]');
+  if (scWebHit) { const t = scWeb.list[+scWebHit.dataset.scweb]; if (t) bcStart([Object.assign({}, t)], 0, false); return; }
   const scAddS = e.target.closest('[data-scadds]');
   if (scAddS) { const t = scHits[+scAddS.dataset.scadds]; plAsk([bcItem(t)], t.title); return; }
   const scHit = e.target.closest('[data-schit]');
@@ -2292,6 +2296,7 @@ async function scLoad() {
     scItems = items.filter((x, i) => items.findIndex(y => y.id === x.id) === i);
     safeSet('rw_sc_items', JSON.stringify(scItems));
     if (missed.length) showNotice('SoundCloud didn’t send your ' + missed.join(' and ') + ' this time (kept the last ones). The rest loaded.' + (missed.includes('likes') && !scSignedIn ? ' If your likes are private, sign in to see them.' : ''));
+    setTimeout(scIndex, 1500);   // read the playlists' songs for the search box
     diag('soundcloud: ' + likedT.length + ' likes, ' + upT.length + ' uploads, ' + scItems.filter(x => x.kind === 'pl').length + ' playlists for ' + u.username);
   } catch (e) {
     diag('soundcloud load FAILED: ' + e.message);
@@ -2335,7 +2340,73 @@ function scCount() {
   const songs = scItems.reduce((n, x) => n + (x.kind === 'pl' ? x.count || 0 : (x.tracks || []).length), 0);
   return songs + ' song' + (songs === 1 ? '' : 's') + ' in ' + scItems.length + ' list' + (scItems.length === 1 ? '' : 's');
 }
-function scSongs() { const all = []; scItems.forEach(x => (x.tracks || []).forEach(t => all.push(t))); return all; }
+function scSongs() {
+  const all = [];
+  scItems.forEach(x => {
+    if (x.tracks) { x.tracks.forEach(t => all.push(t)); return; }
+    const ix = scIdx && scIdx.lists[x.id];
+    if (ix) ix.t.forEach((a, i) => all.push({ sc: a[0], n: i + 1, title: a[1], artist: a[2], dur: a[3], art: a[4], album: x.title, au: 'sc:' + x.id, url: null, off: !!(a[5] & 1), preview: !!(a[5] & 2) }));
+  });
+  return all;
+}
+// The songs inside every playlist, read once in the background and kept on this device (IndexedDB), so the
+// search box finds songs in playlists you haven't opened. A playlist is read again when its song count changes.
+const kv = (mode, fn) => new Promise((ok, no) => {
+  const o = indexedDB.open('rw_cache', 1);
+  o.onupgradeneeded = () => o.result.createObjectStore('kv');
+  o.onerror = () => no(o.error);
+  o.onsuccess = () => { try { const t = o.result.transaction('kv', mode), r = fn(t.objectStore('kv')); t.oncomplete = () => ok(r.result); t.onerror = () => no(t.error); } catch (e) { no(e); } };
+});
+let scIdx = null, scIdxBusy = '', scIdxRun = false;
+async function scIndex() {
+  if (scIdxRun || !NATIVE || !scItems.length) return;
+  scIdxRun = true;
+  try {
+    if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} scIdx = scIdx || { lists: {} }; }
+    const todo = scItems.filter(x => x.kind === 'pl' && !(scIdx.lists[x.id] && scIdx.lists[x.id].c === x.count));
+    const total = todo.length;
+    let done = 0;
+    const refresh = () => { if (tab === 'sc' && !scAlbum && scFilter && $('scList')) { $('scList').innerHTML = scListHtml(); scWire(); } };
+    const work = async () => {
+      while (todo.length) {
+        const item = todo.shift();
+        try {
+          const tr = await scTracks(item);
+          scIdx.lists[item.id] = { c: item.count, t: tr.map(t => [t.sc, t.title, t.artist, t.dur, t.art, (t.off ? 1 : 0) | (t.preview ? 2 : 0)]) };
+        } catch (e) { diag('soundcloud index: ' + item.title + ' failed: ' + e.message); }
+        done++;
+        scIdxBusy = 'Reading the songs in your playlists… ' + done + ' / ' + total;
+        const m = document.querySelector('.scIdxMsg'); if (m) m.textContent = scIdxBusy;
+        if (done % 10 === 0) refresh();
+        await new Promise(r => setTimeout(r, 200));
+      }
+    };
+    if (total) { scIdxBusy = 'Reading the songs in your playlists… 0 / ' + total; await Promise.all([work(), work()]); }
+    const keep = new Set(scItems.map(x => x.id));
+    Object.keys(scIdx.lists).forEach(k => { if (!keep.has(k)) delete scIdx.lists[k]; });
+    scIdx.at = Date.now();
+    if (total) { try { await kv('readwrite', st => st.put(scIdx, 'sc_idx')); } catch (e) { diag('soundcloud index not kept: ' + e.message); } diag('soundcloud index: ' + total + ' playlists read'); }
+    scIdxBusy = '';
+    refresh();
+  } finally { scIdxRun = false; scIdxBusy = ''; }
+}
+// "On SoundCloud": the same words searched across all of SoundCloud (a moment after you stop typing).
+let scWeb = { q: '', list: [], busy: false }, scWebTimer = 0;
+function scWebSearch(q) {
+  clearTimeout(scWebTimer);
+  q = q.trim();
+  if (q.length < 3) { scWeb = { q: '', list: [], busy: false }; return; }
+  if (q === scWeb.q) return;
+  scWebTimer = setTimeout(async () => {
+    scWeb = { q, list: [], busy: true };
+    let list = [];
+    try { const d = await scGet(SC_API + '/search/tracks?q=' + encodeURIComponent(q) + '&limit=40'); list = (d.collection || []).map((t, i) => scTrack(t, i + 1, 'SoundCloud search', 'sc:search')).filter(t => !t.off); }
+    catch (e) { diag('soundcloud search failed: ' + e.message); }
+    if (scWeb.q !== q) return;
+    scWeb = { q, list, busy: false };
+    if (tab === 'sc' && !scAlbum && $('scList')) { $('scList').innerHTML = scListHtml(); scWire(); }
+  }, 600);
+}
 function scView() {
   if (!NATIVE) return '<div class="empty">SoundCloud needs the RadioWizard app for Android or Windows (SoundCloud blocks websites).</div>';
   let h = '';
@@ -2362,6 +2433,7 @@ function scView() {
   h += '<div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
     + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>';
   h += '<ul class="list" id="scList" style="margin-top:10px">' + scListHtml() + '</ul>';
+  if (!scIdxRun && (!scIdx || !scIdx.at)) setTimeout(scIndex, 1500);
   return h;
 }
 function scListHtml() {
@@ -2369,10 +2441,14 @@ function scListHtml() {
   scHits = f.length > 1 ? scSongs().filter(t => !t.off && (t.title + ' ' + t.artist).toLowerCase().includes(f)).filter((t, i, a) => a.findIndex(y => y.sc === t.sc) === i).slice(0, 200) : [];
   const songs = scHits.length ? '<li class="songHits"><h4>Songs · ' + scHits.length + (scHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + scHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-schit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-scadds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Lists</h4></li>' : '';
   scShown = f ? scItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : scItems;
-  return songs + scShown.slice(0, scMore).map((x, i) => '<li class="st" data-scalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+  const busy = f && scIdxBusy ? '<li class="hint scIdxMsg" style="list-style:none">' + esc(scIdxBusy) + '</li>' : '';
+  const web = f.length > 2 && scWeb.q.toLowerCase() === f ? (scWeb.busy ? '<li class="hint" style="list-style:none">Searching SoundCloud…</li>' : scWeb.list.length
+    ? '<li class="songHits"><h4>On SoundCloud · ' + scWeb.list.length + '</h4><ul class="list">' + scWeb.list.map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-scweb="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + (t.preview ? 'preview · ' : '') + bcTime(t.dur) + '</span><button class="add" data-scaddw="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul></li>' : '') : '';
+  return busy + songs + scShown.slice(0, scMore).map((x, i) => '<li class="st" data-scalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.kind === 'pl' ? x.artist + ' · ' + (x.album ? 'album' : 'playlist') : x.kind === 'likes' ? 'your likes' : 'your uploads') + ' · ' + x.count + ' song' + (x.count === 1 ? '' : 's') + '</div></div></li>').join('')
     + (scShown.length > scMore ? '<li><button class="chip more" id="scMoreBtn">Show more (' + (scShown.length - scMore) + ')</button></li>' : '')
-    + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">Nothing matches.</li>' : '');
+    + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">' + (scIdxBusy ? 'Nothing in your lists yet — still reading your playlists.' : 'Nothing in your lists matches.') + '</li>' : '')
+    + web;
 }
 function scWire() {
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
@@ -2386,7 +2462,7 @@ function scWire() {
   on('scMenu', () => scMenuOpen());
   on('scMoreBtn', () => { scMore += 150; $('scList').innerHTML = scListHtml(); scWire(); });
   const f = $('scFilter');
-  if (f) f.oninput = () => { scFilter = f.value; scMore = 150; $('scFilterX').hidden = !scFilter; $('scList').innerHTML = scListHtml(); scWire(); };
+  if (f) f.oninput = () => { scFilter = f.value; scMore = 150; $('scFilterX').hidden = !scFilter; scIndex(); scWebSearch(scFilter.toLowerCase()); $('scList').innerHTML = scListHtml(); scWire(); };
   on('scFilterX', () => { scFilter = ''; scMore = 150; if (f) { f.value = ''; f.focus(); } $('scFilterX').hidden = true; $('scList').innerHTML = scListHtml(); scWire(); });
 }
 async function scOpenAlbum(item) {
