@@ -152,6 +152,8 @@
   }
   .st .body { flex: 1; min-width: 0; }
   .st .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .sub, .np .name, .st .name { -webkit-mask-image: none; }
+  .mq { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent); }
   .st .meta { color: var(--muted); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st .srcs { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
   .tag { font-size: .68rem; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
@@ -322,6 +324,16 @@
   .trk .d { color: var(--muted); font-size: .8rem; }
   .trk.now { border-color: var(--accent); box-shadow: 0 0 12px var(--glow); }
   .trk.off { opacity: .45; cursor: default; }
+  .qs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
+  .qs .q { border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); border-radius: 6px; padding: 1px 6px; font: inherit; font-size: .7rem; font-variant-numeric: tabular-nums; cursor: pointer; }
+  .qs .q:hover { color: var(--text); border-color: var(--accent); }
+  .qs .q.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 25%, var(--surface-2)); }
+  .np .label .br { text-transform: none; letter-spacing: 0; }
+  /* Long names and song titles glide sideways so the end can be read. */
+  .mq { text-overflow: clip !important; }
+  .mq > .mqIn { display: inline-block; padding-right: 1.5em; animation: mq var(--mq-t, 8s) ease-in-out infinite alternate; }
+  @keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--mq-d, 0px)); } }
+  @media (prefers-reduced-motion: reduce) { .mq > .mqIn { animation: none; } .mq { text-overflow: ellipsis !important; } }
   .subRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .subRow .sub { min-width: 0; }
   .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
@@ -392,7 +404,7 @@
       <div class="now" id="nowArea">
         <img class="art" id="npArt" src="icon-192.png" alt="">
         <div class="np">
-          <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="crowd" id="crowd" hidden></span></div>
+          <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="br" id="npBr" hidden></span><span class="crowd" id="crowd" hidden></span></div>
           <div class="name" id="npName">Nothing playing</div>
           <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
         </div>
@@ -547,7 +559,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.17.0';
+const VERSION = '1.18.0';
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
@@ -1062,22 +1074,86 @@ function pickUsed(q) {
   savePicks();
 }
 let listed = [];   // stations on screen, by index
-function stationRow(st, i) {
-  const meta = [st.country, st.tags.slice(0, 3).join(', '), st.codec && (st.codec.toUpperCase() + (st.bitrate ? ' ' + st.bitrate : ''))].filter(Boolean).join(' · ');
+// Many directories list each quality of a station separately ("Groove Salad (128k MP3)", "(64k AAC)", "320K AAC HLS"…).
+// They're shown as one row named without the quality, with a chip per quality; the row plays the best one.
+const Q_TOKEN = /\s*[(\[]?\s*(?:\d{1,3}\s*k(?:bps|b)?|\d{2,3}\s*kbit|hls|flac|aac\+?|he-?aac|mp3|ogg|opus)\s*[)\]]?\s*$/i;
+function baseName(n) {
+  let b = String(n || '').trim(), prev;
+  do { prev = b; b = b.replace(Q_TOKEN, '').replace(/[\s\-–|·:,]+$/, '').trim(); } while (b !== prev && b.length > 2);
+  return b.length > 2 ? b : String(n || '').trim();
+}
+const kbps = st => { const b = +st.bitrate || 0; return b > 2000 ? Math.round(b / 1000) : b; };   // some list 320000
+const codecName = st => { const c = String(st.codec || '').toUpperCase(); return /HLS/i.test(st.name) || c === 'MP4' && !kbps(st) ? (/FLAC/i.test(st.name) ? 'FLAC' : 'HLS') : c === 'MP4' ? 'AAC' : c; };
+const qLabel = st => [codecName(st), kbps(st) ? kbps(st) + 'k' : ''].filter(Boolean).join(' ') || '?';
+// Best to play first: a normal MP3/AAC stream, highest bitrate up to 320; HLS/FLAC and unknowns after.
+const qRank = st => { const b = kbps(st), c = codecName(st); return (c === 'MP3' || c === 'AAC' || c === 'OGG' || c === 'OPUS') && b ? 1000 + Math.min(b, 320) : b ? 500 + Math.min(b, 320) : 0; };
+function groupVariants(list) {
+  const groups = new Map(), out = [];
+  for (const st of list) {
+    const k = normName(baseName(st.name)) + '|' + (st.country || '').toLowerCase();
+    if (normName(baseName(st.name)).length < 3) { out.push({ head: st, vars: [st], name: st.name }); continue; }
+    let g = groups.get(k);
+    if (!g) { g = { head: st, vars: [], name: baseName(st.name) }; groups.set(k, g); out.push(g); }
+    g.vars.push(st);
+  }
+  for (const g of out) {
+    g.vars.sort((a, b) => qRank(b) - qRank(a));
+    g.head = g.vars[0];
+    if (g.vars.length === 1) g.name = g.head.name;
+  }
+  return out;
+}
+function stationRow(st, i, g) {
+  const vars = g ? g.vars : [st];
+  const meta = [st.country, st.tags.slice(0, 3).join(', ')].filter(Boolean).join(' · ');
   const names = [...new Set(st.srcs.map(s => SRC[s.src] ? SRC[s.src].name : s.src))];
   const check = st.check === 'ok' ? '<span class="tag ok">✓ plays</span>' : st.check === 'dead' ? '<span class="tag bad">no answer</span>' : (st.check === 'checking' || st.check === 'wait') ? '<span class="tag">testing…</span>' : '';
-  const now = current && current.key === st.key;
+  const now = current && vars.some(v => v.key === current.key);
+  const qs = vars.some(v => v.codec || kbps(v)) ? '<div class="qs">' + vars.map(v => {
+    const vi = v === st ? i : (listed.push(v), listed.length - 1);
+    return '<button class="q' + (current && current.key === v.key ? ' on' : '') + '" data-q="' + vi + '" title="Play this quality">' + esc(qLabel(v)) + '</button>';
+  }).join('') + '</div>' : '';
   return '<li class="st' + (now ? ' now' : '') + (st.check === 'checking' || st.check === 'wait' ? ' checking' : '') + (st.check === 'dead' ? ' dead' : '') + '" data-i="' + i + '">'
     + '<img class="art" loading="lazy" alt="" src="' + esc(st.img || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
-    + '<div class="body"><div class="name">' + esc(st.name) + '</div><div class="meta">' + esc(meta || ' ') + '</div>'
+    + '<div class="body"><div class="name">' + esc(g ? g.name : st.name) + '</div><div class="meta">' + esc(meta || ' ') + '</div>' + qs
     + '<div class="srcs">' + check + names.map(n => '<span class="tag">' + esc(n) + '</span>').join('') + '</div></div>'
     + (tab === 'favs' ? '<button class="add tagBtn" data-cat="' + i + '" title="Change its category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg></button>' : '')
     + '<button class="add" data-addst="' + i + '" title="Add to a playlist">＋</button>'
     + '<button class="heart' + (isFav(st) ? ' on' : '') + '" data-heart="' + i + '" title="Favorite">' + (isFav(st) ? '♥' : '♡') + '</button></li>';
 }
+// Text too long for its space glides sideways and back (player name and song all the time; list rows while
+// hovered, and the playing row). Anything else setting the text just replaces the glide; it's re-fitted.
+function fitMq(el) {
+  if (!el || !el.isConnected) return;
+  const txt = el.textContent;
+  if (el.firstElementChild && el.firstElementChild.classList.contains('mqIn') || el.classList.contains('mq')) { el.classList.remove('mq'); el.textContent = txt; }
+  el.dataset.mqText = txt;
+  const over = el.scrollWidth - el.clientWidth;
+  if (over <= 2 || !el.clientWidth) return;
+  const sp = document.createElement('span');
+  sp.className = 'mqIn'; sp.textContent = txt;
+  el.textContent = ''; el.appendChild(sp); el.classList.add('mq');
+  const d = over + 24;
+  el.style.setProperty('--mq-d', -d + 'px');
+  el.style.setProperty('--mq-t', Math.min(30, Math.max(6, d / 22 + 4)).toFixed(1) + 's');
+}
+function unMq(el) { if (el && el.classList.contains('mq')) { const t = el.textContent; el.classList.remove('mq'); el.textContent = t; } }
+{
+  const watch = [$('npName'), $('npSub')];
+  let q = 0;
+  const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(() => watch.forEach(el => { if (el.textContent !== el.dataset.mqText || !el.classList.contains('mq')) fitMq(el); })); };
+  const mo = new MutationObserver(() => watch.forEach(el => { if (el.textContent !== el.dataset.mqText) later(); }));
+  watch.forEach(el => mo.observe(el, { childList: true, characterData: true, subtree: true }));
+  const ro = new ResizeObserver(es => { let ch = false; es.forEach(x => { const w = Math.round(x.contentRect.width); if (w !== x.target._mqW) { x.target._mqW = w; x.target.dataset.mqText = ''; ch = true; } }); if (ch) later(); });
+  watch.forEach(el => ro.observe(el));
+  if (document.fonts) document.fonts.ready.then(later);
+  els.main.addEventListener('mouseover', e => { const n = e.target.closest('.st .name'); if (n && !n.classList.contains('mq')) fitMq(n); });
+  els.main.addEventListener('mouseout', e => { const n = e.target.closest('.st .name'); if (n && !n.contains(e.relatedTarget) && !n.closest('.st.now')) unMq(n); });
+}
+let mainList = null;   // the rows' own stations (no quality variants), for next / previous
 function render() {
   let h = '';
-  listed = [];
+  listed = []; mainList = null;
   if (tab === 'search') {
     if (!lastQuery) {
       const allPinned = pickSel && pickSel.size && [...pickSel].every(q => (picks.find(p => p.q === q) || {}).pin);
@@ -1095,16 +1171,18 @@ function render() {
       const dead = results.filter(st => st.check === 'dead');
       const live = results.filter(st => st.check !== 'dead');
       const testing = results.filter(st => st.check === 'wait' || st.check === 'checking').length;
-      h += '<div class="status">' + live.length + ' station' + (live.length === 1 ? '' : 's') + ' for “' + esc(lastQuery) + '”'
+      const liveG = groupVariants(live);
+      h += '<div class="status">' + liveG.length + ' station' + (liveG.length === 1 ? '' : 's') + ' for “' + esc(lastQuery) + '”'
         + (waiting ? ' · still searching ' + waiting : '') + (testing ? ' · testing ' + testing : '') + '</div>';
       h += '<div class="srcChips">' + on.map(s => {
         const st = srcState[s.id];
         return '<span class="chip' + (st.wait ? ' wait' : st.fail ? ' fail' : '') + '">' + esc(s.name) + (st.wait ? '' : st.fail ? ' ✕' : ' <b>' + st.n + '</b>') + '</span>';
       }).join('') + '</div>';
-      const list = (showDead ? results : live).slice(0, shown);
+      const allG = showDead ? groupVariants(results) : liveG, list = allG.slice(0, shown);
       if (!list.length && !waiting) h += '<div class="empty">Nothing found. Try fewer or other words.</div>';
-      h += '<ul class="list">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
-      if ((showDead ? results : live).length > shown) h += '<button class="chip more" id="moreBtn">Show more</button>';
+      mainList = list.map(g => g.head);
+      h += '<ul class="list">' + list.map(g => { listed.push(g.head); return stationRow(g.head, listed.length - 1, g); }).join('') + '</ul>';
+      if (allG.length > shown) h += '<button class="chip more" id="moreBtn">Show more</button>';
       if (dead.length && !showDead) h += '<button class="chip more" id="deadBtn">Show ' + dead.length + ' that didn’t answer</button>';
     }
   } else if (tab === 'bc') {
@@ -1124,6 +1202,7 @@ function render() {
     h += '<ul class="list" style="margin-top:12px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
   }
   els.main.innerHTML = h;
+  requestAnimationFrame(() => els.main.querySelectorAll('.st.now .name').forEach(fitMq));
   const rc = $('recentClear');
   if (rc) rc.onclick = () => {
     if (!rc.dataset.sure) { rc.dataset.sure = '1'; rc.textContent = 'Tap again to clear'; setTimeout(() => { if (rc.isConnected) { delete rc.dataset.sure; rc.textContent = '🗑️ Clear recent'; } }, 4000); return; }
@@ -1195,7 +1274,9 @@ els.main.addEventListener('click', e => {
   const row = e.target.closest('.st');
   if (row && row.dataset.bcalbum != null) { bcOpenAlbum(bcShown[+row.dataset.bcalbum]); return; }
   if (row && row.dataset.scalbum != null) { scOpenAlbum(scShown[+row.dataset.scalbum]); return; }
-  if (row && row.dataset.i != null) { playStation(listed[+row.dataset.i], false, listed.slice()); return; }
+  const qB = e.target.closest('[data-q]');
+  if (qB) { playStation(listed[+qB.dataset.q], false, (mainList || listed).slice()); return; }
+  if (row && row.dataset.i != null) { playStation(listed[+row.dataset.i], false, (mainList || listed).slice()); return; }
   const trk = e.target.closest('.trk');
   if (trk && trk.dataset.t != null && !trk.classList.contains('off')) bcPlayAlbum(bcAlbum, +trk.dataset.t);
   if (trk && trk.dataset.sct != null && !trk.classList.contains('off')) scPlayAlbum(scAlbum, +trk.dataset.sct);
@@ -1592,7 +1673,14 @@ function paintVol() {
     : '<path d="M3 9v6h4l5 5V4L7 9H3z"/>' + waves().map((d, i) => '<path class="wave w' + (i + 1) + (i < n ? ' on' : '') + '" d="' + d + '"/>').join('');
 }
 
+function showBr() {
+  const e = $('npBr'); if (!e) return;
+  const st = !bc && current;
+  const t = st && (st.codec || kbps(st)) ? qLabel(st).replace(/(\d+)k$/, '$1 kbps') : '';
+  e.hidden = !t; e.textContent = t;
+}
 function renderBar() {
+  showBr();
   const cast = castConnected();
   const dev = cast ? ctx.getCurrentSession().getCastDevice().friendlyName : '';
   els.castBtn.classList.toggle('on', cast);
@@ -2552,8 +2640,8 @@ async function crowdFor(st, url) {
         const n = await getJSON('https://api.laut.fm/station/' + encodeURIComponent(name) + '/listeners');
         if (typeof n === 'number') return n;
       }
-      if (s.src === 'soma' && s.url) {
-        const id = (s.url.match(/somafm\.com\/([a-z0-9]+)-/) || [])[1];
+      if (s.url && /somafm\.com\//.test(s.url)) {
+        const id = (s.url.match(/somafm\.com\/([a-z0-9]+?)(?:-|\d{2,3}\.|\.pls|$)/) || [])[1];
         const d = id && await getJSON('https://api.somafm.com/channels.json');
         const c = d && d.channels && d.channels.find(x => x.id === id);
         if (c && c.listeners != null) return +c.listeners;
@@ -2569,6 +2657,14 @@ async function crowdFor(st, url) {
     if (!Array.isArray(src)) src = [src];
     const mine = src.find(x => x.listenurl && new URL(x.listenurl).pathname === u.pathname) || (src.length === 1 ? src[0] : null);
     if (mine && mine.listeners != null) return +mine.listeners;
+  } catch (e) {}
+  // SHOUTcast servers: v2 stats, then the old 7.html line (current listeners first).
+  try {
+    const u = new URL(url);
+    if (!(location.protocol === 'https:' && u.protocol === 'http:' && !NATIVE)) {
+      try { const d = await getJSON(u.origin + '/stats?sid=1&json=1', { timeout: 6000 }); if (d && d.currentlisteners != null) return +d.currentlisteners; } catch (e) {}
+      try { const r = await get(u.origin + '/7.html', { timeout: 6000 }); const m = r && r.status < 400 && (r.text || '').match(/<body>\s*(\d+),/i); if (m) return +m[1]; } catch (e) {}
+    }
   } catch (e) {}
   return null;
 }
@@ -3041,6 +3137,7 @@ $('plCopy').addEventListener('click', () => {
   if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showNotice('Playlist copied as text.'));
 });
 $('plMenuClose').addEventListener('click', () => $('plMenu').close());
+$('plMenu').addEventListener('click', e => { if (e.target === $('plMenu')) $('plMenu').close(); });
 // Quick ordering for a playlist: one-time sorts (album keeps its track order; radio stations sort by name).
 $('plSort').addEventListener('click', e => {
   const b = e.target.closest('[data-sort]'); if (!b) return;
@@ -3488,6 +3585,14 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     return n;
   }
   const readAndroid = k => allNames(k).map(name => { try { const r = JSON.parse(A.readBackup(name)); return r.ok ? r.text : ''; } catch (e) { return ''; } });
+  // Each Android read is a blocking call into the folder: the page can't draw while it runs. Background syncs read
+  // one file at a time with a pause between, so the screen keeps drawing (a tablet showed blank for seconds).
+  const breathe = () => new Promise(ok => setTimeout(ok, 40));
+  const readAndroidSlow = async k => {
+    const out = [];
+    for (const name of allNames(k)) { await breathe(); try { const r = JSON.parse(A.readBackup(name)); out.push(r.ok ? r.text : ''); } catch (e) { out.push(''); } }
+    return out;
+  };
   function writeAndroid(k) { quiet[fileName(k)] = (quiet[fileName(k)] || 0) + 1; A.saveBackup(fileName(k), K[k].text(), false); }
   function writeWeb(k) {
     const dir = webDir;
@@ -3519,9 +3624,12 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
   // At start: pick up the remembered folder; take back what an empty app is missing.
   (async () => {
     if (androidFolders) {
+      await new Promise(ok => setTimeout(ok, 1200));   // let the page draw first
       try { if (!JSON.parse(A.readBackup(fileName('songs'))).ok) return; } catch (e) { return; }
       folderOk = true;
-      for (const k of KINDS) if (on[k]) { link(k, readAndroid(k)); writeAndroid(k); }
+      const t0 = performance.now();
+      for (const k of KINDS) if (on[k]) { link(k, await readAndroidSlow(k)); writeAndroid(k); }
+      diag('backup folder read in ' + Math.round(performance.now() - t0) + ' ms');
       $('backupMsg').textContent = 'Auto-saving as ' + fileName('songs');
       return;
     }
@@ -3619,13 +3727,18 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     try {
       for (const k of KINDS) {
         if (!on[k]) continue;
-        const texts = androidFolders ? readAndroid(k) : webDir ? await readWeb(webDir, k) : [];
+        const texts = androidFolders ? await readAndroidSlow(k) : webDir ? await readWeb(webDir, k) : [];
         if (link(k, texts)) write(k);
       }
     } catch (e) { diag('sync failed: ' + e.message); }
     syncing = false;
   };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncAll(); });
+  // Coming back to the front: draw first, sync a moment later.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    document.body.style.opacity = '.999'; requestAnimationFrame(() => requestAnimationFrame(() => { document.body.style.opacity = ''; }));
+    setTimeout(syncAll, 1500);
+  });
   setInterval(syncAll, 60000);
   // Backups dialog (footer): everything at once, or one kind.
   const drawBk = () => {
@@ -3674,6 +3787,7 @@ $('diagCopy').addEventListener('click', () => {
   setTimeout(() => $('diagCopy').textContent = 'Copy log', 1500);
 });
 $('diagClose').addEventListener('click', () => diagDlg.close());
+diagDlg.addEventListener('click', e => { if (e.target === diagDlg) diagDlg.close(); });
 $('diagClear').addEventListener('click', () => { logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); $('diagText').value = logLines.join(String.fromCharCode(10)); });
 $('gcBtn').addEventListener('click', () => { if (safeGet('skipgc') === 't') localStorage.removeItem('skipgc'); else safeSet('skipgc', 't'); gcLabel(); });
 
