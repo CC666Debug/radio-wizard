@@ -340,7 +340,9 @@
   .sHeart.on { color: #ff5c9a; }
   .sHeart.thumb.on { color: var(--accent); }
   .subRow .sBtn { flex: none; padding: 0 4px; font-size: 1.05rem; line-height: 1; }
-  header.top.mini .subRow .sBtn, header.top.mini #songHeart { display: none !important; }
+  header.top.mini .subRow .sBtn { display: none; }
+  header.top.mini #songHeart { padding: 0 4px; }
+  header.top.mini #songHeart .thumbI { width: 19px; height: 19px; }
   button.pTime { background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
   .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
@@ -363,7 +365,7 @@
   .thumb { background: none; border: 0; cursor: pointer; color: var(--muted); line-height: 0; padding: 4px 6px; flex: none; }
   .thumb .thumbI { width: 22px; height: 22px; }
   .thumb.on { color: var(--accent); }
-  .thumb.on .thumbI path:last-child { fill: currentColor; fill-opacity: .35; }
+  .thumb.on .thumbI path { fill: currentColor; }
   li.song .thumb .thumbI { width: 24px; height: 24px; }
   li.song .sMeta { color: var(--muted); font-size: .78rem; }
   li.song .sLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
@@ -564,7 +566,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.19.0';
+const VERSION = '1.19.1';
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
