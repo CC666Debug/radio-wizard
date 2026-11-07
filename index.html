@@ -130,6 +130,10 @@
   .picks .chips.selecting .chip { border-style: dashed; }
   .picks .chip.sel { border: 1px solid var(--accent) !important; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
   .picks .chip:disabled { opacity: .45; }
+  .picks .chip.pinned { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+  .picks .chip small { color: var(--muted); font-size: .72rem; margin-left: 3px; }
+  .pickSort { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font: inherit; font-size: .8rem; }
+  #pickRev[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
   .hint { color: var(--muted); font-size: .85rem; margin-top: 16px; line-height: 1.5; }
 
   ul.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -543,8 +547,18 @@
 
 <script>
 'use strict';
-const VERSION = '1.16.1';
+const VERSION = '1.17.0';
 const $ = id => document.getElementById(id);
+// Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
+// newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
+const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev'];
+let rwBooted = false, setTimer = 0;
+setTimeout(() => { rwBooted = true; }, 0);
+function setTouch(k) {
+  if (!rwBooted || !SET_KEYS.includes(k)) return;
+  try { const t = JSON.parse(localStorage.getItem('rw_set_at') || '{}'); t[k] = Date.now(); localStorage.setItem('rw_set_at', JSON.stringify(t)); } catch (e) {}
+  clearTimeout(setTimer); setTimer = setTimeout(() => autoSave('settings'), 800);
+}
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
   castBtn: $('castBtn'), castLabel: $('castLabel'), playBtn: $('playBtn'), playIcon: $('playIcon'), muteBtn: $('muteBtn'),
@@ -557,7 +571,7 @@ const PALETTES = [['Wizard', '', '#9b6bff'], ['Red', 'red', '#e0455f'], ['Blue',
 const MODES = [['Dark', 'dark'], ['Light', 'light'], ['Like the system', '']];
 const ACCENTS = [["Theme's own", ''], ['Purple', '#8b5cf6'], ['Pink', '#e0457b'], ['Red', '#d64545'], ['Orange', '#e8730c'], ['Gold', '#c99a06'], ['Green', '#2f9e5a'], ['Teal', '#14a3a3'], ['Cyan', '#22b8e0']];
 const tStore = k => { try { return localStorage.getItem('rw_' + k) || ''; } catch (e) { return ''; } };
-const tSave = (k, v) => { try { localStorage.setItem('rw_' + k, v); } catch (e) {} };
+const tSave = (k, v) => { try { localStorage.setItem('rw_' + k, v); } catch (e) {} setTouch('rw_' + k); };
 const sysLight = matchMedia('(prefers-color-scheme: light)');
 let applyTheme = function () {
   const d = document.documentElement, pal = tStore('palette'), mode = tStore('mode'), acc = tStore('accent');
@@ -610,7 +624,7 @@ $('themeDlg').addEventListener('click', e => { if (e.target === $('themeDlg')) $
 
 // ── Small helpers ───────────────────────────────
 const safeGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} setTouch(k); };
 const readJSON = (k, d) => { try { return JSON.parse(safeGet(k)) || d; } catch (e) { return d; } };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const unent = s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
@@ -958,7 +972,7 @@ let searchTok = 0, lastQuery = '', srcState = {}, showDead = false, shown = 40;
 function runSearch(q) {
   q = q.trim();
   if (!q) return;
-  if (q.length <= 40 && !picks.some(p => p.toLowerCase() === q.toLowerCase())) { picks.push(q.toLowerCase()); safeSet('rw_picks', JSON.stringify(picks)); }
+  pickUsed(q);
   lastQuery = q; showDead = false; shown = 40;
   const tok = ++searchTok;
   results = []; byUrl = new Map(); byName = new Map(); checkQueue = [];
@@ -1009,8 +1023,9 @@ function toggleFav(st) {
   render(); renderBar();
 }
 function addRecent(st) {
-  recent = [keep(st), ...recent.filter(r => r.key !== st.key)].slice(0, 30);
-  safeSet('rw_recent', JSON.stringify(recent));
+  recent = [{ ...keep(st), at: Date.now() }, ...recent.filter(r => r.key !== st.key)].slice(0, 30);
+  unGone('recent', st.key);
+  safeSet('rw_recent', JSON.stringify(recent)); autoSave('recent');
 }
 
 // ── Showing it ──────────────────────────────────
@@ -1021,7 +1036,31 @@ document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () =>
 // Front-page pills: the starters plus every search you make; only removed by holding a pill → Delete.
 let pickSel = null;   // Set while picking pills to delete
 const PICKS = ['black metal', 'pagan', 'folk', 'synthwave', 'darkwave', 'halloween', 'gothic', 'metal', 'ambient', 'dark ambient', 'industrial', 'post-punk', 'medieval', 'celtic', 'doom', 'lofi', 'jazz', 'classical', 'blues', '80s'];
-let picks = readJSON('rw_picks', null) || PICKS.slice();
+// picks: [{ q, at (last searched), n (times searched), pin, pinAt }]. Old lists were plain words (newest last).
+let picks = (() => {
+  const raw = readJSON('rw_picks', null);
+  if (!raw) return PICKS.map(q => ({ q, at: 0, n: 0 }));
+  if (typeof raw[0] !== 'string') return raw;
+  const now = Date.now();
+  return raw.map((q, i) => PICKS.includes(q) ? { q, at: 0, n: 0 } : { q, at: now - (raw.length - i) * 1000, n: 1 });
+})();
+let pickSort = safeGet('rw_picksort') || 'new', pickRev = safeGet('rw_picksrev') === 't';
+const savePicks = () => { safeSet('rw_picks', JSON.stringify(picks)); autoSave('picks'); };
+function pickOrder() {
+  const az = (a, b) => a.q.localeCompare(b.q, undefined, { sensitivity: 'base', numeric: true });
+  const by = pickSort === 'az' ? az : pickSort === 'used' ? (a, b) => (b.n || 0) - (a.n || 0) || (b.at || 0) - (a.at || 0) || az(a, b) : (a, b) => (b.at || 0) - (a.at || 0) || az(a, b);
+  const cmp = pickRev ? (a, b) => by(b, a) : by;
+  return [...picks.filter(p => p.pin).sort(cmp), ...picks.filter(p => !p.pin).sort(cmp)];
+}
+function pickUsed(q) {
+  q = q.trim().toLowerCase();
+  if (!q || q.length > 40) return;
+  const p = picks.find(x => x.q.toLowerCase() === q);
+  if (p) { p.n = (p.n || 0) + 1; p.at = Date.now(); }
+  else picks.push({ q, at: Date.now(), n: 1 });
+  unGone('picks', q);
+  savePicks();
+}
 let listed = [];   // stations on screen, by index
 function stationRow(st, i) {
   const meta = [st.country, st.tags.slice(0, 3).join(', '), st.codec && (st.codec.toUpperCase() + (st.bitrate ? ' ' + st.bitrate : ''))].filter(Boolean).join(' · ');
@@ -1041,10 +1080,13 @@ function render() {
   listed = [];
   if (tab === 'search') {
     if (!lastQuery) {
+      const allPinned = pickSel && pickSel.size && [...pickSel].every(q => (picks.find(p => p.q === q) || {}).pin);
       h += '<div class="picks"><div class="picksHead"><h2>' + (pickSel ? pickSel.size + ' picked' : 'Try one') + '</h2>'
-        + (pickSel ? '<button class="chip" id="pickDel"' + (pickSel.size ? '' : ' disabled') + '>🗑️ Delete</button><button class="chip" id="pickAll">All</button><button class="chip" id="pickCancel">Cancel</button>' : '') + '</div>'
-        + '<div class="chips' + (pickSel ? ' selecting' : '') + '">' + picks.map(p => '<button class="chip' + (pickSel && pickSel.has(p) ? ' sel' : '') + '" data-pick="' + esc(p) + '">' + (pickSel && pickSel.has(p) ? '✓ ' : '') + esc(p) + '</button>').join('') + '</div>'
-        + (pickSel ? '' : '<div class="hint" style="margin-top:6px;font-size:.75rem">Your searches become pills here. Hold one to pick and delete.</div>') + '</div>';
+        + (pickSel ? '<button class="chip" id="pickPin"' + (pickSel.size ? '' : ' disabled') + '>📌 ' + (allPinned ? 'Unpin' : 'Pin') + '</button><button class="chip" id="pickDel"' + (pickSel.size ? '' : ' disabled') + '>🗑️ Delete</button><button class="chip" id="pickAll">All</button><button class="chip" id="pickCancel">Cancel</button>'
+          : '<select id="pickSort" class="pickSort" aria-label="Order of the pills">' + [['new', 'Newest'], ['used', 'Most used'], ['az', 'A → Z']].map(([v, n]) => '<option value="' + v + '"' + (v === pickSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>'
+            + '<button class="chip" id="pickRev" title="Reverse the order"' + (pickRev ? ' aria-pressed="true"' : '') + '>⇅</button>') + '</div>'
+        + '<div class="chips' + (pickSel ? ' selecting' : '') + '">' + pickOrder().map(p => '<button class="chip' + (pickSel && pickSel.has(p.q) ? ' sel' : '') + (p.pin ? ' pinned' : '') + '" data-pick="' + esc(p.q) + '">' + (pickSel && pickSel.has(p.q) ? '✓ ' : p.pin ? '📌 ' : '') + esc(p.q) + (pickSort === 'used' && p.n ? ' <small>' + p.n + '</small>' : '') + '</button>').join('') + '</div>'
+        + (pickSel ? '' : '<div class="hint" style="margin-top:6px;font-size:.75rem">Your searches become pills here. Hold one to pin or delete.</div>') + '</div>';
       h += '<div class="hint">RadioWizard searches ' + SOURCES.filter(usable).length + ' radio directories at once' + (NATIVE ? ' and tests every station before it’s listed' : '') + '.'
         + (NATIVE ? '' : '<br>TuneIn, SHOUTcast, Radio Garden, radio.net and OnlineRadioBox only work in the RadioWizard apps for Android and Windows (they block websites).') + '</div>';
     } else {
@@ -1085,7 +1127,8 @@ function render() {
   const rc = $('recentClear');
   if (rc) rc.onclick = () => {
     if (!rc.dataset.sure) { rc.dataset.sure = '1'; rc.textContent = 'Tap again to clear'; setTimeout(() => { if (rc.isConnected) { delete rc.dataset.sure; rc.textContent = '🗑️ Clear recent'; } }, 4000); return; }
-    recent = []; safeSet('rw_recent', '[]'); render();
+    recent.forEach(x => markGone('recent', x.key));
+    recent = []; safeSet('rw_recent', '[]'); autoSave('recent'); render();
   };
   const more = $('moreBtn'); if (more) more.onclick = () => { shown += 40; queueCheck(results.slice(0, shown + 40)); render(); };
   const deadB = $('deadBtn'); if (deadB) deadB.onclick = () => { showDead = true; render(); };
@@ -1094,6 +1137,7 @@ function render() {
   if (MS[tab]) msWire(tab);
   if (tab === 'pl') plWire();
   const fs = $('favSort'); if (fs) fs.onchange = () => { favSort = fs.value; safeSet('rw_favsort', favSort); render(); };
+  const ps = $('pickSort'); if (ps) ps.onchange = () => { pickSort = ps.value; safeSet('rw_picksort', pickSort); render(); };
 }
 // Hold (or right-click) a pill to start picking pills to delete.
 let pickHeld = false, pickTimer = 0;
@@ -1112,11 +1156,18 @@ els.main.addEventListener('pointerdown', e => {
 els.main.addEventListener('contextmenu', e => { const b = e.target.closest('[data-pick]'); if (!b) return; e.preventDefault(); if (!pickSel) { clearTimeout(pickTimer); pickStart(b.dataset.pick); } });
 els.main.addEventListener('click', e => {
   if (e.target.id === 'pickCancel') { pickSel = null; render(); return; }
-  if (e.target.id === 'pickAll') { pickSel = new Set(pickSel && pickSel.size === picks.length ? [] : picks); render(); return; }
+  if (e.target.id === 'pickAll') { pickSel = new Set(pickSel && pickSel.size === picks.length ? [] : picks.map(p => p.q)); render(); return; }
+  if (e.target.id === 'pickRev') { pickRev = !pickRev; safeSet('rw_picksrev', pickRev ? 't' : ''); render(); return; }
+  if (e.target.closest('#pickPin') && pickSel && pickSel.size) {
+    const sel = picks.filter(p => pickSel.has(p.q)), pin = !sel.every(p => p.pin), now = Date.now();
+    sel.forEach(p => { p.pin = pin; p.pinAt = now; });
+    savePicks(); pickSel = null; render(); return;
+  }
   if (e.target.id === 'pickDel' && pickSel) {
     const b = e.target;
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again to delete ' + pickSel.size; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '🗑️ Delete'; } }, 4000); return; }
-    picks = picks.filter(p => !pickSel.has(p)); safeSet('rw_picks', JSON.stringify(picks)); pickSel = null; render(); return;
+    picks.forEach(p => { if (pickSel.has(p.q)) markGone('picks', p.q.toLowerCase()); });
+    picks = picks.filter(p => !pickSel.has(p.q)); savePicks(); pickSel = null; render(); return;
   }
   if (MS[tab] && msClick(e)) return;
   const pick = e.target.closest('[data-pick]');
@@ -3202,7 +3253,8 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
 }
 
 // Backups (like the casters'): Markdown files in a folder you pick, one per kind and per device:
-//   radiowizard-saved-songs-<device>.md, radiowizard-favorites-<device>.md, radiowizard-playlists-<device>.md
+//   radiowizard-saved-songs-<device>.md, radiowizard-favorites-<device>.md, radiowizard-playlists-<device>.md,
+//   radiowizard-search-pills-<device>.md, radiowizard-recent-stations-<device>.md, radiowizard-settings-<device>.md
 // Once a kind is backed up, every change rewrites its file, so a synced folder (Obsidian) stays up to date by
 // itself. Each line is readable Markdown; a hidden <!-- rw-… {json} --> comment carries what Restore needs.
 // An app that opens empty takes its own device's files back before writing. Restore always merges (never replaces).
@@ -3332,13 +3384,97 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
       },
     },
   };
+  // Search pills: one line each; removals ride along like the others.
+  K.picks = {
+    file: 'search-pills', what: 'search pills', count: () => picks.length,
+    text: () => '# RadioWizard · search pills\n\n' + stamp(plural(picks.length, 'pill', 'pills')) + '\n\n'
+      + pickOrder().map(p => '- ' + (p.pin ? '📌 ' : '') + '**' + md(p.q) + '**' + (p.n ? ' · searched ' + plural(p.n, 'time', 'times') : '') + (p.at ? ' · last ' + day(p.at) : '') + hide('rw-pick', p)).join('\n') + '\n' + goneText(['picks']),
+    take(old) {
+      takeGone(old);
+      let n = 0;
+      for (const line of (old || '').split(/\r?\n/)) {
+        const x = unhide(line, 'rw-pick');
+        if (!x || !x.q) continue;
+        const mine = picks.find(p => p.q.toLowerCase() === x.q.toLowerCase());
+        if (mine) {
+          let ch = false;
+          if ((x.n || 0) > (mine.n || 0)) { mine.n = x.n; ch = true; }
+          if ((x.at || 0) > (mine.at || 0)) { mine.at = x.at; ch = true; }
+          if ((x.pinAt || 0) > (mine.pinAt || 0)) { mine.pin = !!x.pin; mine.pinAt = x.pinAt; ch = true; }
+          if (ch) n++;
+        } else if (!isGone('picks', x.q.toLowerCase(), x.at)) { picks.push({ q: x.q, at: x.at || 0, n: x.n || 0, pin: !!x.pin, pinAt: x.pinAt || 0 }); n++; }
+      }
+      const before = picks.length;
+      picks = picks.filter(p => !isGone('picks', p.q.toLowerCase(), p.at));
+      n += before - picks.length;
+      if (n) { safeSet('rw_picks', JSON.stringify(picks)); if (tab === 'search' && !lastQuery) render(); }
+      return n;
+    },
+  };
+  // Recent stations: the last 30 you played on any device, newest first.
+  K.recent = {
+    file: 'recent-stations', what: 'recent stations', count: () => recent.length,
+    text: () => '# RadioWizard · recent stations\n\n' + stamp(plural(recent.length, 'station', 'stations')) + '\n\n'
+      + recent.map(st => '- **' + md(st.name) + '**' + [st.country, st.at ? day(st.at) : ''].filter(Boolean).map(x => ' · ' + md(x)).join('') + hide('rw-rec', st)).join('\n') + '\n' + goneText(['recent']),
+    take(old) {
+      takeGone(old);
+      let n = 0;
+      for (const line of (old || '').split(/\r?\n/)) {
+        const st = unhide(line, 'rw-rec');
+        if (!st || !st.key || !st.name) continue;
+        const mine = recent.find(x => x.key === st.key);
+        if (mine) { if ((st.at || 0) > (mine.at || 0)) { mine.at = st.at; n++; } }
+        else if (!isGone('recent', st.key, st.at)) { recent.push(st); n++; }
+      }
+      const before = recent.length;
+      recent = recent.filter(x => !isGone('recent', x.key, x.at));
+      n += before - recent.length;
+      if (n) { recent.sort((a, b) => (b.at || 0) - (a.at || 0)); recent = recent.slice(0, 30); safeSet('rw_recent', JSON.stringify(recent)); if (tab === 'recent') render(); }
+      return n;
+    },
+  };
+  // Settings: the newest change of each one wins (volume stays per device).
+  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed' };
+  const setAt = () => readJSON('rw_set_at', {});
+  K.settings = {
+    file: 'settings', what: 'settings', count: () => Object.keys(setAt()).length,
+    text: () => {
+      const at = setAt();
+      return '# RadioWizard · settings\n\n' + stamp(plural(Object.keys(at).length, 'setting', 'settings')) + '\n\n'
+        + SET_KEYS.filter(k => at[k]).map(k => '- ' + SET_NAMES[k] + ': ' + md(safeGet(k) || '(default)') + hide('rw-set', { k, v: safeGet(k) || '', t: at[k] })).join('\n') + '\n';
+    },
+    take(old) {
+      const at = setAt();
+      let n = 0;
+      for (const line of (old || '').split(/\r?\n/)) {
+        const x = unhide(line, 'rw-set');
+        if (!x || !SET_KEYS.includes(x.k) || !(x.t > (at[x.k] || 0))) continue;
+        try { if (x.v) localStorage.setItem(x.k, x.v); else localStorage.removeItem(x.k); } catch (e) {}
+        at[x.k] = x.t; n++;
+      }
+      if (!n) return 0;
+      safeSet('rw_set_at', JSON.stringify(at));
+      // Put the new settings to work right away.
+      try { applyTheme(); if (typeof drawTheme === 'function' && $('themeDlg').open) drawTheme(); } catch (e) {}
+      srcOn = readJSON('rw_srcs', null) || SOURCES.map(s => s.id);
+      const sv = readJSON('rw_svcs', null); if (Array.isArray(sv)) { svcOn = sv; applyTabs(); }
+      favSort = safeGet('rw_favsort') || 'cat';
+      timeStyle = (parseInt(safeGet('rw_time'), 10) || 0) % TIME_STYLES.length; try { drawClock(); } catch (e) {}
+      pickSort = safeGet('rw_picksort') || 'new'; pickRev = safeGet('rw_picksrev') === 't';
+      render();
+      return n;
+    },
+  };
   const KINDS = Object.keys(K);
   const DEVICES = ['pc', 'mac', 'tablet', 'phone'];
   const fileName = (k, dev) => 'radiowizard-' + K[k].file + '-' + (dev || device()) + '.md';
   const allNames = k => DEVICES.map(d => fileName(k, d));
   const kindOf = name => KINDS.find(k => allNames(k).includes(name)) || 'songs';
   // Saved songs auto-save whenever a folder is known (as before); the others once they've been backed up here.
+  // The newer kinds (pills, recent, settings) join in by themselves wherever favorites or playlists are already backed up.
+  const old = safeGet('rw_bk_favs') === 't' || safeGet('rw_bk_pls') === 't';
   const on = { songs: true, favs: safeGet('rw_bk_favs') === 't', pls: safeGet('rw_bk_pls') === 't' };
+  for (const k of ['picks', 'recent', 'settings']) on[k] = safeGet('rw_bk_' + k) === 't' || old;
   const msg = (k, t) => { if (k === 'songs' || k === 'all') $('backupMsg').textContent = t; if (k !== 'songs') showNotice(t); };
   let folderOk = false, webDir = null, writing = Promise.resolve(), pending = [];
   const quiet = {};
@@ -3462,9 +3598,10 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     const got = [];
     for (const f of files) {
       const t = await f.text();
-      const k = /<!-- rw-fav /.test(t) ? 'favs' : /<!-- rw-pl /.test(t) ? 'pls' : 'songs';
+      const k = /<!-- rw-fav /.test(t) ? 'favs' : /<!-- rw-pl /.test(t) ? 'pls' : /<!-- rw-pick /.test(t) ? 'picks' : /<!-- rw-rec /.test(t) ? 'recent' : /<!-- rw-set /.test(t) ? 'settings' : 'songs';
       const n = K[k].take(t);
-      if (n) { got.push(k === 'pls' ? plural(n, 'playlist item', 'playlist items') : k === 'favs' ? plural(n, 'favorite', 'favorites') : plural(n, 'saved song', 'saved songs')); autoSave(k); }
+      const names = { pls: ['playlist item', 'playlist items'], favs: ['favorite', 'favorites'], picks: ['search pill', 'search pills'], recent: ['recent station', 'recent stations'], settings: ['setting', 'settings'], songs: ['saved song', 'saved songs'] };
+      if (n) { got.push(plural(n, names[k][0], names[k][1])); autoSave(k); }
     }
     const t = got.length ? 'Restored ' + got.join(', ') + '.' : 'Nothing new in ' + (files.length === 1 ? 'that file.' : 'those files.');
     $('backupMsg').textContent = t; showNotice(t);
