@@ -307,6 +307,8 @@
   dialog .row button { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
   dialog .row button.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   .bcHead { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; flex-wrap: wrap; }
+  /* Rows with ‹ Back stay in view under the player while the list scrolls. */
+  .bcHead.stick { position: sticky; top: var(--topH, 0px); z-index: 4; background: var(--bg); margin: 6px -4px 10px; padding: 6px 4px; }
   .bcHead .who { flex: 1; min-width: 0; color: var(--muted); font-size: .9rem; }
   .bcHead .who b { color: var(--text); }
   .btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 8px 12px; cursor: pointer; font-size: .9rem; }
@@ -566,7 +568,24 @@
 
 <script>
 'use strict';
-const VERSION = '1.20.1';
+const VERSION = '1.21.0';
+// The player's height, so ‹ Back rows can stay right under it.
+(() => {
+  const top = document.querySelector('header.top');
+  if (!top || !window.ResizeObserver) return;
+  new ResizeObserver(() => document.documentElement.style.setProperty('--topH', Math.round(top.getBoundingClientRect().height) + 'px')).observe(top);
+})();
+// Back: the mouse's back button (and the keyboard's Browser Back) closes an open box, else does the visible ‹ Back.
+function rwBack() {
+  const d = [...document.querySelectorAll('dialog[open]')].pop();
+  if (d) { d.close(); return true; }
+  const b = ['scBack', 'bcBack', 'msBack', 'plBack'].map(id => document.getElementById(id)).find(x => x && x.offsetParent);
+  if (b) { b.click(); return true; }
+  return false;
+}
+window.addEventListener('mousedown', e => { if (e.button === 3) e.preventDefault(); });
+window.addEventListener('mouseup', e => { if (e.button === 3) { e.preventDefault(); rwBack(); } });
+window.addEventListener('keydown', e => { if (e.key === 'BrowserBack' || (e.altKey && e.key === 'ArrowLeft')) { e.preventDefault(); rwBack(); } });
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
@@ -1889,7 +1908,7 @@ function bcView() {
   if (!BC_CAN) return '<div class="empty">Bandcamp needs the RadioWizard Android app (Bandcamp blocks websites).</div>';
   if (bcAlbum) {
     const a = bcAlbum;
-    h += '<div class="bcHead"><button class="btn" id="bcBack">‹ Back</button></div>';
+    h += '<div class="bcHead stick"><button class="btn" id="bcBack">‹ Back</button></div>';
     h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt=""><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
       + '<button class="btn main" id="bcPlayAll">▶ Play</button> <button class="btn" id="bcShuf">🔀 Shuffle</button> <button class="btn" id="bcAddAll">＋ Playlist</button></div></div>';
     if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this album. Try again.' : 'Opening…') + '</div>';
@@ -2301,7 +2320,7 @@ function scView() {
   let h = '';
   if (scAlbum) {
     const a = scAlbum, playing = bcTrack();
-    h += '<div class="bcHead"><button class="btn" id="scBack">‹ Back</button></div>';
+    h += '<div class="bcHead stick"><button class="btn" id="scBack">‹ Back</button></div>';
     h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt="" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
       + '<button class="btn main" id="scPlayAll">▶ Play</button> <button class="btn" id="scShuf">🔀 Shuffle</button> <button class="btn" id="scAddAll">＋ Playlist</button></div></div>';
     if (!a.tracks) h += '<div class="empty">' + (a.err === 'private' ? 'SoundCloud won’t open this one (it’s private or was taken down).' : a.err ? 'Couldn’t open this. Try again.' : 'Opening…') + '</div>';
@@ -2518,7 +2537,7 @@ function msView(id) {
   let h = '';
   if (S.album) {
     const a = S.album;
-    h += '<div class="bcHead"><button class="btn" id="msBack">‹ Back</button></div>';
+    h += '<div class="bcHead stick"><button class="btn" id="msBack">‹ Back</button></div>';
     h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt="" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.meta || '') + '</div>'
       + '<button class="btn main" id="msPlayAll">▶ Play</button> <button class="btn" id="msShuf">🔀 Shuffle</button> <button class="btn" id="msAddAll">＋ Playlist</button></div></div>';
     if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this. Try again.' : 'Opening…') + '</div>';
@@ -3083,7 +3102,7 @@ function plView() {
   if (plOpen) {
     const pl = pls.find(p => p.id === plOpen);
     if (!pl) { plOpen = null; return plView(); }
-    let h = '<div class="bcHead"><button class="btn" id="plBack">‹ Back</button><div class="who"><b>' + esc(pl.name) + '</b> · ' + pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') + '</div>'
+    let h = '<div class="bcHead stick"><button class="btn" id="plBack">‹ Back</button><div class="who"><b>' + esc(pl.name) + '</b> · ' + pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') + '</div>'
       + '<button class="btn main" id="plPlay">▶ Play</button><button class="btn" id="plShuf">🔀</button><button class="btn" id="plMenuBtn">⋯</button></div>';
     if (!pl.items.length) h += '<div class="empty">Empty. Add songs with ＋ in a Bandcamp album, from Find songs, or ＋ on the player; add stations with ＋ in search results.</div>';
     h += '<ul class="list">' + pl.items.map((it, i) => plItemRow(it, i, pl)).join('') + '</ul>';
