@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.21.0';
+const VERSION = '1.21.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1061,8 +1061,10 @@ function toggleFav(st) {
   render(); renderBar();
 }
 function addRecent(st) { addRecentEntry(keep(st)); }
+// Recent keeps 30 stations and 30 music entries (albums, lists, playlists), so one never pushes the other out.
+const recentTrim = list => { let st = 0, mu = 0; return list.filter(x => x.m ? ++mu <= 30 : ++st <= 30); };
 function addRecentEntry(x) {
-  recent = [{ ...x, at: Date.now() }, ...recent.filter(r => r.key !== x.key)].slice(0, 30);
+  recent = recentTrim([{ ...x, at: Date.now() }, ...recent.filter(r => r.key !== x.key)]);
   unGone('recent', x.key);
   safeSet('rw_recent', JSON.stringify(recent)); autoSave('recent');
 }
@@ -1082,11 +1084,14 @@ function recentMusic(queue, i) {
   const one = queue.length === 1, albums = new Set(queue.map(x => x.album));
   const name = one ? t.title : albums.size === 1 ? t.album : src + ' songs';
   const key = 'm|' + src + '|' + (one ? (t.sc || t.ms || (t.au + '#' + t.n + '#' + t.title)) : (t.au || '') + '|' + name);
-  const from = queue.length > 100 ? i : 0;
+  // A whole SoundCloud list or Bandcamp album is kept as a pointer: replaying reopens all of it from the source.
+  const au = t.au && queue.every(x => x.au === t.au) && !t.ms ? t.au : '';
+  const ref = !one && au ? (t.sc ? { sc: au.replace(/^sc:/, '') } : { bc: au }) : null;
+  const from = ref ? 0 : queue.length > 100 ? i : 0;
   addRecentEntry({
     m: 'list', key, name, src, art: t.art || '',
     sub: one ? [t.artist, t.album].filter(Boolean).join(' · ') : [albums.size === 1 ? t.artist : '', queue.length + ' songs'].filter(Boolean).join(' · '),
-    items: queue.slice(from, from + 100).map(bcItem), i: i - from,
+    ...(ref ? { ref, start: t.sc || t.n, startT: t.title } : { items: queue.slice(from, from + 100).map(bcItem), i: i - from }),
   });
   if (bc) bc.rkey = key;
 }
@@ -1095,6 +1100,22 @@ async function playRecentMusic(x) {
   if (x.m === 'pl') { const pl = pls.find(p => p.id === x.plId); if (!pl) { showNotice('That playlist isn’t here any more.'); return; } playPlaylist(pl, 0, false); return; }
   if (x.m === 'shuf') { if (x.act === 'sc') scShuffleAll(); else bcShuffleAll(); return; }
   showNotice('Starting ' + x.name + '…');
+  if (x.ref) {
+    let list = [];
+    try {
+      if (x.ref.sc) {
+        const item = scItems.find(y => y.id === x.ref.sc);
+        if (!item) { showNotice('That SoundCloud list isn’t loaded here. Open the SoundCloud tab first.'); return; }
+        list = (await scTracks(item)).filter(scPlayable);
+      } else {
+        list = (await bcTracks({ url: x.ref.bc, title: x.name, art: x.art })).filter(y => y.url);
+      }
+    } catch (e) {}
+    if (!list.length) { showNotice('Couldn’t get those songs from ' + x.src + '. Try again.'); return; }
+    const at = list.findIndex(y => (x.ref.sc ? y.sc : y.n) === x.start && y.title === x.startT);
+    bcStart(list, Math.max(0, at), false);
+    return;
+  }
   const albums = new Map(), out = [];
   let at = 0;
   for (let k = 0; k < (x.items || []).length; k++) {
@@ -3620,7 +3641,7 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
       const before = recent.length;
       recent = recent.filter(x => !isGone('recent', x.key, x.at));
       n += before - recent.length;
-      if (n) { recent.sort((a, b) => (b.at || 0) - (a.at || 0)); recent = recent.slice(0, 30); safeSet('rw_recent', JSON.stringify(recent)); if (tab === 'recent') render(); }
+      if (n) { recent.sort((a, b) => (b.at || 0) - (a.at || 0)); recent = recentTrim(recent); safeSet('rw_recent', JSON.stringify(recent)); if (tab === 'recent') render(); }
       return n;
     },
   };
