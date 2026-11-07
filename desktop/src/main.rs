@@ -64,6 +64,7 @@ fn request(a: &Value, follow: bool, timeout_ms: u64) -> Result<ureq::Response, S
     let mut req = agent(follow, timeout_ms)?.request(method, url).set("Icy-MetaData", "0");
     if let Some(h) = a["headers"].as_object() {
         for (k, v) in h {
+            if k.eq_ignore_ascii_case("X-RW-NoAuth") { continue; }
             if let Some(v) = v.as_str() {
                 req = req.set(k, v);
             }
@@ -75,7 +76,9 @@ fn request(a: &Value, follow: bool, timeout_ms: u64) -> Result<ureq::Response, S
         }
     }
     // Signed in to SoundCloud: its API answers as you (private likes and playlists, full Go+ songs).
-    if url.starts_with("https://api-v2.soundcloud.com/") {
+    // X-RW-NoAuth: ask as nobody (the page retries this way when SoundCloud turns the sign-in down).
+    let no_auth = a["headers"].as_object().map_or(false, |h| h.keys().any(|k| k.eq_ignore_ascii_case("X-RW-NoAuth")));
+    if url.starts_with("https://api-v2.soundcloud.com/") && !no_auth {
         if let Some(t) = soundcloud_token() {
             req = req.set("Authorization", &format!("OAuth {t}"));
         }

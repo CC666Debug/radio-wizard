@@ -338,8 +338,9 @@
   .subRow .sub { min-width: 0; }
   .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
   .sHeart.on { color: #ff5c9a; }
+  .sHeart.thumb.on { color: var(--accent); }
   .subRow .sBtn { flex: none; padding: 0 4px; font-size: 1.05rem; line-height: 1; }
-  header.top.mini .subRow .sBtn { display: none; }
+  header.top.mini .subRow .sBtn, header.top.mini #songHeart { display: none !important; }
   button.pTime { background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
   .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
@@ -359,7 +360,11 @@
   li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
   li.song .sTop { display: flex; align-items: center; gap: 6px; }
   li.song .sName { flex: 1; font-weight: 600; }
-  li.song .heart { padding: 2px 6px; font-size: 1.6rem; }
+  .thumb { background: none; border: 0; cursor: pointer; color: var(--muted); line-height: 0; padding: 4px 6px; flex: none; }
+  .thumb .thumbI { width: 22px; height: 22px; }
+  .thumb.on { color: var(--accent); }
+  .thumb.on .thumbI path:last-child { fill: currentColor; fill-opacity: .35; }
+  li.song .thumb .thumbI { width: 24px; height: 24px; }
   li.song .sMeta { color: var(--muted); font-size: .78rem; }
   li.song .sLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .82rem; }
   li.song .sLinks a { color: var(--accent-2); }
@@ -406,7 +411,7 @@
         <div class="np">
           <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="br" id="npBr" hidden></span><span class="crowd" id="crowd" hidden></span></div>
           <div class="name" id="npName">Nothing playing</div>
-          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
+          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart thumb" id="songHeart" title="Thumbs up: keep this song" hidden><svg class="thumbI" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
         </div>
       </div>
       <div class="prog" id="prog" hidden><div class="pSeek" id="pSeek"><div class="pTrack"><i id="pFill"></i></div></div><button class="pTime" id="pD" type="button" title="Tap to change how the time shows">0:00</button></div>
@@ -511,7 +516,7 @@
 </dialog>
 
 <dialog id="songsDlg">
-  <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">♥ Saved songs</button></div>
+  <div class="tabs" style="margin:0 0 10px"><button class="tab" data-stab="recent">🕰️ Recently played</button><button class="tab" data-stab="saved">👍 Saved songs</button></div>
   <ul class="list" id="songsList"></ul>
   <div class="row" id="backupRow" style="justify-content:flex-start"><button type="button" id="savedBackup">⬇️ Back up</button><button type="button" id="savedFolder" hidden>📁 Folder</button><button type="button" id="savedRestore">⬆️ Restore</button><input type="file" id="savedFile" accept=".md,.txt,text/markdown,text/plain" hidden></div>
   <p class="hint" id="backupMsg" style="margin:6px 0 0"></p>
@@ -559,7 +564,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.18.0';
+const VERSION = '1.19.0';
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
@@ -1693,7 +1698,7 @@ function renderBar() {
   const ns = nowSong();
   $('songHeart').hidden = !ns;
   $('songShare').hidden = !ns;
-  if (ns) { const on = isSaved(ns.song); $('songHeart').textContent = on ? '♥' : '♡'; $('songHeart').classList.toggle('on', on); }
+  if (ns) { const on = isSaved(ns.song); $('songHeart').classList.toggle('on', on); $('songHeart').title = on ? 'Thumbs up given (tap to take it back)' : 'Thumbs up: keep this song'; }
   drawClock();
   paintVol();
   if (bc) { bcRenderBar(cast, dev); return; }
@@ -2118,9 +2123,16 @@ async function scKey(fresh) {
 async function scGet(url) {
   for (let k = 0; k < 2; k++) {
     const id = await scKey(k > 0);
-    const r = await get(url + (url.includes('?') ? '&' : '?') + 'client_id=' + id, { headers: { Accept: 'application/json' } });
+    const full = url + (url.includes('?') ? '&' : '?') + 'client_id=' + id;
+    let r = await get(full, { headers: { Accept: 'application/json' } });
     if ((r.status === 401 || r.status === 403) && k === 0) continue;   // SoundCloud changed its key: find the new one
-    if ((r.status === 401 || r.status === 403) && scSignedIn) { const e = new Error('SoundCloud refused the saved sign-in (HTTP ' + r.status + ')'); e.signin = true; throw e; }
+    // Signed in and still refused: ask again as nobody (public lists open fine that way). Never pops up the sign-in.
+    if ((r.status === 401 || r.status === 403) && scSignedIn) {
+      const r2 = await get(full, { headers: { Accept: 'application/json', 'X-RW-NoAuth': '1' } });
+      diag('soundcloud refused the sign-in (' + r.status + ') → without it: ' + r2.status + ' ' + url.replace(SC_API, '').slice(0, 60));
+      if (r2.status < 400) { scAuthLost(); r = r2; }
+      else if (/\/me(\?|$)/.test(url)) scAuthLost();
+    }
     if (r.status === 404 && url.includes('/resolve?')) throw new Error('No SoundCloud page called “' + scUser + '” was found.');
     if (r.status >= 400) throw new Error('HTTP ' + r.status);
     return JSON.parse(r.text);
@@ -2161,7 +2173,7 @@ async function scLoad() {
     const missed = [];
     const part = async (what, url, max) => {
       try { return await scPages(url, max); }
-      catch (e) { if (e.signin) throw e; diag('soundcloud ' + what + ' FAILED: ' + e.message); missed.push(what); return []; }
+      catch (e) { diag('soundcloud ' + what + ' FAILED: ' + e.message); missed.push(what); return []; }
     };
     const likes = await part('likes', SC_API + '/users/' + u.id + '/likes?limit=200&linked_partitioning=1', 40);
     const ups = await part('uploads', SC_API + '/users/' + u.id + '/tracks?limit=200&linked_partitioning=1', 10);
@@ -2182,8 +2194,7 @@ async function scLoad() {
     diag('soundcloud: ' + likedT.length + ' likes, ' + upT.length + ' uploads, ' + scItems.filter(x => x.kind === 'pl').length + ' playlists for ' + u.username);
   } catch (e) {
     diag('soundcloud load FAILED: ' + e.message);
-    if (e.signin) scSigninLost();
-    else showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load SoundCloud (' + (e.message || 'no answer') + '). Try again in a moment.');
+    showNotice(e.message && e.message.length > 20 ? e.message : 'Couldn’t load SoundCloud (' + (e.message || 'no answer') + '). Try again in a moment.');
   }
   scBusy = ''; render();
 }
@@ -2232,7 +2243,7 @@ function scView() {
     h += '<div class="bcHead"><button class="btn" id="scBack">‹ Back</button></div>';
     h += '<div class="album"><img src="' + esc(a.art || 'icon-192.png') + '" alt="" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div><h2>' + esc(a.title) + '</h2><div class="by">' + esc(a.artist) + '</div>'
       + '<button class="btn main" id="scPlayAll">▶ Play</button> <button class="btn" id="scShuf">🔀 Shuffle</button> <button class="btn" id="scAddAll">＋ Playlist</button></div></div>';
-    if (!a.tracks) h += '<div class="empty">' + (a.err ? 'Couldn’t open this. Try again.' : 'Opening…') + '</div>';
+    if (!a.tracks) h += '<div class="empty">' + (a.err === 'private' ? 'SoundCloud won’t open this one (it’s private or was taken down).' : a.err ? 'Couldn’t open this. Try again.' : 'Opening…') + '</div>';
     else h += '<ul class="list">' + a.tracks.map((t, i) => '<li class="trk' + (t.off ? ' off' : '') + (playing && playing.sc === t.sc ? ' now' : '') + '" data-sct="' + i + '"><span class="n">' + t.n + '</span><span class="t">' + esc(t.title)
       + (a.kind === 'uploads' ? '' : '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small>') + '</span><span class="d">' + (t.off ? 'not streamable' : (t.preview ? 'preview · ' : '') + bcTime(t.dur)) + '</span>'
       + (t.off ? '' : '<button class="add" data-scaddt="' + i + '" title="Add to a playlist">＋</button>') + '</li>').join('') + '</ul>';
@@ -2281,7 +2292,7 @@ async function scOpenAlbum(item) {
   if (!item) return;
   scAlbum = Object.assign({}, item);
   render(); window.scrollTo(0, 0);
-  try { scAlbum.tracks = await scTracks(item); } catch (e) { diag('soundcloud list FAILED ' + item.id + ': ' + e.message); scAlbum.err = !e.signin; if (e.signin) scSigninLost(item); }
+  try { scAlbum.tracks = await scTracks(item); } catch (e) { diag('soundcloud list FAILED ' + item.id + ': ' + e.message); if (scAlbum) scAlbum.err = /HTTP 40[13]/.test(e.message) ? 'private' : true; }
   if (tab === 'sc' && scAlbum && scAlbum.id === item.id) render();
 }
 function scPlayAlbum(album, from) {
@@ -2317,37 +2328,32 @@ $('scRefresh').addEventListener('click', () => { $('scDlg').close(); scLoad(); }
 $('scLoginBtn').addEventListener('click', () => { $('scDlg').close(); if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
 $('scForget').addEventListener('click', () => {
   $('scDlg').close();
-  scItems = []; scUser = ''; scAlbum = null; scSignedIn = false;
+  scItems = []; scUser = ''; scAlbum = null; scSignedIn = false; scAuthBad = false;
   ['rw_sc_items', 'rw_sc_user', 'rw_sc_in'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   if (window.AndroidCast && window.AndroidCast.soundcloudLogout) window.AndroidCast.soundcloudLogout();
   render();
 });
 function scMenuOpen() {
   $('scRefresh').hidden = !scItems.length;
-  $('scLoginBtn').hidden = scSignedIn || !SC_LOGIN();
+  $('scLoginBtn').hidden = (scSignedIn && !scAuthBad) || !SC_LOGIN();
+  $('scLoginBtn').textContent = scSignedIn ? 'Sign in again' : 'Sign in to SoundCloud';
   $('scForget').hidden = !scSignedIn && !scItems.length;
   $('scForget').textContent = scSignedIn ? 'Sign out' : 'Forget my SoundCloud';
   $('scDlg').showModal();
 }
-// SoundCloud turned down the sign-in RW saved: SoundCloud swaps it now and then while your SoundCloud session
-// itself stays good. Re-run the sign-in window: SoundCloud signs straight back in, the window catches the
-// fresh sign-in and closes by itself, and whatever failed loads again. No sign-out, no password.
-let scLostShown = 0, scRetryAlbum = null;
-function scSigninLost(item) {
-  if (item) scRetryAlbum = item;
-  if (Date.now() - scLostShown < 30000) { diag('soundcloud sign-in refused again (refresh already tried)'); return; }
-  scLostShown = Date.now();
-  diag('soundcloud refused the saved sign-in → refreshing it');
-  if (!SC_LOGIN()) { showNotice('SoundCloud didn’t accept the saved sign-in. Sign out and in again (⋯).'); return; }
-  showNotice('Refreshing your SoundCloud sign-in…');
-  window.AndroidCast.soundcloudLogin();
+// SoundCloud turned down the saved sign-in: things keep loading without it (public ones), and the ⋯ menu
+// offers "Sign in again". The sign-in window only ever opens when you tap a sign-in button.
+let scAuthBad = false;
+function scAuthLost() {
+  if (scAuthBad) return;
+  scAuthBad = true;
+  showNotice('SoundCloud didn’t accept your sign-in, so this loaded without it. To fix: ⋯ → Sign in again.');
 }
 window.onSoundcloudLogin = ok => {
   diag('soundcloud sign-in: ' + (ok ? 'yes' : 'closed'));
   if (!ok) return;
-  scSignedIn = true; safeSet('rw_sc_in', 't');
-  const again = scRetryAlbum; scRetryAlbum = null;
-  if (again && scAlbum && scAlbum.id === again.id) { scOpenAlbum(again); return; }
+  scSignedIn = true; scAuthBad = false; safeSet('rw_sc_in', 't');
+  if (scAlbum) { scOpenAlbum(scAlbum); return; }
   scLoad();
 };
 $('scDlg').addEventListener('click', e => { if (e.target === $('scDlg')) $('scDlg').close(); });
@@ -2801,7 +2807,8 @@ if ('mediaSession' in navigator) {
   try { navigator.mediaSession.setActionHandler('seekbackward', d => { const c = songClock(); if (c) seekTo(c.pos - (d && d.seekOffset || 10)); }); } catch (e) {}
 }
 
-// ── Song heart, Recently played and Saved songs ──
+// ── Song thumbs-up, Recently played and Saved songs ──
+const THUMB_SVG = '<svg class="thumbI" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>';
 const isSaved = t => saved.some(x => songKey(x.song) === songKey(t));
 function nowSong() {
   if (bc && bcTrack()) { const t = bcTrack(); return { song: t.artist + ' – ' + t.title, station: trkSrc(t) + ' · ' + t.album }; }
@@ -2826,12 +2833,12 @@ function drawSongs() {
   document.querySelectorAll('#songsDlg [data-stab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.stab === songsTab)));
   const list = songsTab === 'recent' ? heard : saved;
   const ul = $('songsList');
-  ul.innerHTML = list.length ? '' : '<li class="empty">' + (songsTab === 'recent' ? 'Songs you hear show up here.' : 'Tap ♡ next to a song to keep it here.') + '</li>';
+  ul.innerHTML = list.length ? '' : '<li class="empty">' + (songsTab === 'recent' ? 'Songs you hear show up here.' : 'Give a song a thumbs up to keep it here.') + '</li>';
   list.forEach((x, i) => {
     const q = encodeURIComponent(x.song.replace(' – ', ' '));
     const li = document.createElement('li');
     li.className = 'song';
-    li.innerHTML = '<div class="sTop"><div class="sName"></div><button class="heart' + (isSaved(x.song) ? ' on' : '') + '" data-sv="' + i + '">' + (isSaved(x.song) ? '♥' : '♡') + '</button></div>'
+    li.innerHTML = '<div class="sTop"><div class="sName"></div><button class="thumb' + (isSaved(x.song) ? ' on' : '') + '" data-sv="' + i + '" title="Thumbs up">' + THUMB_SVG + '</button></div>'
       + '<div class="sMeta"></div><div class="sLinks">'
       + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener">YouTube</a>'
       + '<a href="https://music.youtube.com/search?q=' + q + '" target="_blank" rel="noopener">YouTube Music</a>'
@@ -3029,7 +3036,7 @@ function plView() {
     const songs = p.items.filter(it => it.k === 'bc').length, sts = p.items.length - songs;
     return '<li class="st" data-plopen="' + i + '"><img class="art" alt="" src="' + esc(art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div class="body"><div class="name">' + esc(p.name)
       + '</div><div class="meta">' + [songs ? songs + ' song' + (songs === 1 ? '' : 's') : '', sts ? sts + ' station' + (sts === 1 ? '' : 's') : ''].filter(Boolean).join(' · ') + '</div></div>'
-      + '<button class="iconBtn" data-plplay="' + i + '" title="Play" style="font-size:1.3rem">▶</button></li>';
+      + '<button class="iconBtn" data-plplay="' + i + '" title="Play" style="font-size:1.3rem">▶</button><button class="iconBtn dragH" data-drag="' + i + '" title="Drag to move">⠿</button></li>';
   }).join('') + '</ul>';
   return h;
 }
@@ -3044,12 +3051,12 @@ function plWire() {
 }
 els.main.addEventListener('click', e => {
   if (tab !== 'pl') return;
+  if (e.target.closest('[data-drag]')) { e.stopPropagation(); return; }
   const open = e.target.closest('[data-plopen]'), playB = e.target.closest('[data-plplay]');
   if (playB) { e.stopPropagation(); playPlaylist(pls[+playB.dataset.plplay], 0, false); return; }
   if (open) { plOpen = pls[+open.dataset.plopen].id; render(); window.scrollTo(0, 0); return; }
   const pl = plOpen && pls.find(p => p.id === plOpen);
   if (!pl) return;
-  if (e.target.closest('[data-drag]')) { e.stopPropagation(); return; }
   const rm = e.target.closest('[data-rm]');
   if (rm) { const [it] = pl.items.splice(+rm.dataset.rm, 1); if (it) markGone('plit', pl.id + '|' + plKey(it)); if (plCtx && plCtx.id === pl.id) plCtx = null; savePls(); render(); return; }
   const row = e.target.closest('[data-pli]');
@@ -3062,9 +3069,11 @@ let rwDragging = false;
 els.main.addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-drag]');
   if (!h || tab !== 'pl' || e.button > 0 || rwDragging) return;
-  const pl = plOpen && pls.find(p => p.id === plOpen); if (!pl) return;
+  // Inside a playlist: its songs/stations move. On the Playlists page: the playlists themselves move.
+  const pl = plOpen && pls.find(p => p.id === plOpen); if (plOpen && !pl) return;
+  const arr = pl ? pl.items : pls;
   const li = h.closest('li'), ul = li.parentElement;
-  const rows = [...ul.querySelectorAll(':scope > li[data-pli]')];
+  const rows = [...ul.querySelectorAll(pl ? ':scope > li[data-pli]' : ':scope > li[data-plopen]')];
   const from = rows.indexOf(li); if (from < 0) return;
   e.preventDefault();
   try { h.setPointerCapture(e.pointerId); } catch (err) {}
@@ -3111,7 +3120,7 @@ els.main.addEventListener('pointerdown', e => {
     li.style.transform = 'translate3d(0,' + (pos[to].top - pos[from].top + (to > from ? pos[to].h - pos[from].h : 0)) + 'px,0)';
     setTimeout(() => {
       document.body.classList.remove('rwDrag');
-      if (to !== from) { const [it] = pl.items.splice(from, 1); pl.items.splice(to, 0, it); plCtx = null; savePls(); }
+      if (to !== from) { const [it] = arr.splice(from, 1); arr.splice(to, 0, it); if (pl) plCtx = null; savePls(); }
       const sy = scrollY;
       render();
       if (scrollY !== sy) scrollTo(0, sy);
