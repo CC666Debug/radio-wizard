@@ -349,6 +349,8 @@
   .plChoice small { color: var(--muted); }
   .trk .add, .st .add { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.35rem; padding: 2px 8px; line-height: 1; }
   .trk .add:hover, .st .add:hover { color: var(--accent); }
+  .st .tagBtn { display: grid; place-items: center; padding: 2px 6px; }
+  .st .tagBtn svg { width: 21px; height: 21px; }
   .songHits h4 { margin: 14px 2px 6px; color: var(--muted); font-size: .85rem; font-weight: 600; }
   .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 14px; }
   .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); }
@@ -533,7 +535,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.15.0';
+const VERSION = '1.15.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1018,7 +1020,7 @@ function stationRow(st, i) {
     + '<img class="art" loading="lazy" alt="" src="' + esc(st.img || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(st.name) + '</div><div class="meta">' + esc(meta || ' ') + '</div>'
     + '<div class="srcs">' + check + names.map(n => '<span class="tag">' + esc(n) + '</span>').join('') + '</div></div>'
-    + (tab === 'favs' ? '<button class="add" data-cat="' + i + '" title="Change its category" style="font-size:1.05rem">🏷</button>' : '')
+    + (tab === 'favs' ? '<button class="add tagBtn" data-cat="' + i + '" title="Change its category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg></button>' : '')
     + '<button class="add" data-addst="' + i + '" title="Add to a playlist">＋</button>'
     + '<button class="heart' + (isFav(st) ? ' on' : '') + '" data-heart="' + i + '" title="Favorite">' + (isFav(st) ? '♥' : '♡') + '</button></li>';
 }
