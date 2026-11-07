@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.24.1';
+const VERSION = '1.24.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2426,14 +2426,16 @@ const kv = (mode, fn) => new Promise((ok, no) => {
   o.onsuccess = () => { try { const t = o.result.transaction('kv', mode), r = fn(t.objectStore('kv')); t.oncomplete = () => ok(r.result); t.onerror = () => no(t.error); } catch (e) { no(e); } };
 });
 let scIdx = null, scIdxBusy = '', scIdxRun = false;
+const scIdxFailed = new Set();   // playlists that failed this time RW is open
 async function scIndex() {
   if (scIdxRun || !NATIVE || !scItems.length) return;
   scIdxRun = true;
   if (!scIdx || !scIdx.at) scIdxBusy = 'Reading the songs in your playlists…';
   try {
     if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} scIdx = scIdx || { lists: {} }; }
-    // A playlist that couldn't be read waits a day before the next try (it used to be retried on every search).
-    const todo = scItems.filter(x => { const ix = x.kind === 'pl' && scIdx.lists[x.id]; return x.kind === 'pl' && !(ix && ix.c === x.count && (!ix.fail || Date.now() - ix.fail < 864e5)); });
+    // A playlist that couldn't be read is skipped until RW is opened again, you sign in again or reload SoundCloud
+    // (it used to be read again on every search).
+    const todo = scItems.filter(x => x.kind === 'pl' && !scIdxFailed.has(x.id) && !(scIdx.lists[x.id] && scIdx.lists[x.id].c === x.count && !scIdx.lists[x.id].fail));
     let failed = 0, lastErr = '';
     const keepNow = () => kv('readwrite', st => st.put(scIdx, 'sc_idx')).catch(e => diag('soundcloud index not kept: ' + e.message));
     const total = todo.length;
@@ -2445,7 +2447,7 @@ async function scIndex() {
         try {
           const tr = await scTracks(item);
           scIdx.lists[item.id] = { c: item.count, t: tr.map(t => [t.sc, t.title, t.artist, t.dur, t.art, (t.off ? 1 : 0) | (t.preview ? 2 : 0)]) };
-        } catch (e) { failed++; lastErr = e.message; scIdx.lists[item.id] = { c: item.count, t: [], fail: Date.now() }; diag('soundcloud index: ' + item.title + ' failed: ' + e.message); }
+        } catch (e) { failed++; lastErr = e.message; scIdxFailed.add(item.id); diag('soundcloud index: ' + item.title + ' failed: ' + e.message); }
         done++;
         if (done % 10 === 0) { scIdx.at = scIdx.at || Date.now(); keepNow(); }   // keep progress as it goes
         scIdxBusy = 'Reading the songs in your playlists… ' + done + ' / ' + total;
@@ -2576,7 +2578,7 @@ async function playHls(url) {
   scHls.loadSource(url);
   scHls.attachMedia(audio);
 }
-$('scRefresh').addEventListener('click', () => { $('scDlg').close(); scLoad(); });
+$('scRefresh').addEventListener('click', () => { $('scDlg').close(); scIdxFailed.clear(); scLoad(); });
 $('scLoginBtn').addEventListener('click', () => { $('scDlg').close(); if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
 $('scForget').addEventListener('click', () => {
   $('scDlg').close();
@@ -2604,7 +2606,7 @@ function scAuthLost() {
 window.onSoundcloudLogin = ok => {
   diag('soundcloud sign-in: ' + (ok ? 'yes' : 'closed'));
   if (!ok) return;
-  scSignedIn = true; scAuthBad = false; safeSet('rw_sc_in', 't');
+  scSignedIn = true; scAuthBad = false; safeSet('rw_sc_in', 't'); scIdxFailed.clear();
   if (scAlbum) { scOpenAlbum(scAlbum); return; }
   scLoad();
 };
