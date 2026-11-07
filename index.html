@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.24.0';
+const VERSION = '1.24.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1157,6 +1157,7 @@ function recentMusicRow(x, ri) {
 // ── Showing it ──────────────────────────────────
 let tab = (() => { const t = safeGet('rw_tab'); return t && document.querySelector('.tab[data-tab="' + t + '"]') ? t : 'search'; })();   // reopens on the tab you were on
 function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
+setTabs();   // the remembered tab is the lit one from the start
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; safeSet('rw_tab', tab); setTabs(); render(); window.scrollTo(0, 0); }));
 
 // Front-page pills: the starters plus every search you make; only removed by holding a pill → Delete.
@@ -2431,7 +2432,10 @@ async function scIndex() {
   if (!scIdx || !scIdx.at) scIdxBusy = 'Reading the songs in your playlists…';
   try {
     if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} scIdx = scIdx || { lists: {} }; }
-    const todo = scItems.filter(x => x.kind === 'pl' && !(scIdx.lists[x.id] && scIdx.lists[x.id].c === x.count));
+    // A playlist that couldn't be read waits a day before the next try (it used to be retried on every search).
+    const todo = scItems.filter(x => { const ix = x.kind === 'pl' && scIdx.lists[x.id]; return x.kind === 'pl' && !(ix && ix.c === x.count && (!ix.fail || Date.now() - ix.fail < 864e5)); });
+    let failed = 0, lastErr = '';
+    const keepNow = () => kv('readwrite', st => st.put(scIdx, 'sc_idx')).catch(e => diag('soundcloud index not kept: ' + e.message));
     const total = todo.length;
     let done = 0;
     const refresh = () => { if (tab === 'sc' && !scAlbum && scFilter && $('scList')) { $('scList').innerHTML = scListHtml(); scWire(); } };
@@ -2441,8 +2445,9 @@ async function scIndex() {
         try {
           const tr = await scTracks(item);
           scIdx.lists[item.id] = { c: item.count, t: tr.map(t => [t.sc, t.title, t.artist, t.dur, t.art, (t.off ? 1 : 0) | (t.preview ? 2 : 0)]) };
-        } catch (e) { diag('soundcloud index: ' + item.title + ' failed: ' + e.message); }
+        } catch (e) { failed++; lastErr = e.message; scIdx.lists[item.id] = { c: item.count, t: [], fail: Date.now() }; diag('soundcloud index: ' + item.title + ' failed: ' + e.message); }
         done++;
+        if (done % 10 === 0) { scIdx.at = scIdx.at || Date.now(); keepNow(); }   // keep progress as it goes
         scIdxBusy = 'Reading the songs in your playlists… ' + done + ' / ' + total;
         const m = document.querySelector('.scIdxMsg'); if (m) m.textContent = scIdxBusy;
         if (done % 10 === 0) refresh();
@@ -2453,7 +2458,8 @@ async function scIndex() {
     const keep = new Set(scItems.map(x => x.id));
     Object.keys(scIdx.lists).forEach(k => { if (!keep.has(k)) delete scIdx.lists[k]; });
     scIdx.at = Date.now();
-    if (total) { try { await kv('readwrite', st => st.put(scIdx, 'sc_idx')); } catch (e) { diag('soundcloud index not kept: ' + e.message); } diag('soundcloud index: ' + total + ' playlists read'); }
+    if (total) { await keepNow(); diag('soundcloud index: ' + total + ' playlists, ' + failed + ' failed' + (lastErr ? ' (' + lastErr + ')' : '')); }
+    if (failed) showNotice('SoundCloud wouldn’t open ' + failed + ' of your playlists here (' + lastErr + '), so search skips their songs.' + (scSignedIn ? ' Try ⋯ → Sign in again, or update the app.' : ''));
     scIdxBusy = '';
     refresh();
   } finally { scIdxRun = false; scIdxBusy = ''; }
