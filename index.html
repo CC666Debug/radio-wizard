@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.22.1';
+const VERSION = '1.22.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2739,7 +2739,7 @@ let song = '', songArt = '', songAt = 0, songEnds = 0, songStarts = 0, songWatch
 let heard = readJSON('rw_heard', []);     // [{ song, station, at }]
 let saved = readJSON('rw_saved', []);     // [{ song, station, at }]
 let autoSave = () => {}, backUp = () => {}, restoreFiles = () => {};   // keeps the device's backup file matching (set up with Back up below)
-const songKey = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+const songKey = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').replace(/ [-–—] /g, ' – ').trim();   // "A - B" and "A – B" are one song
 
 function cleanTitle(t) {
   t = String(t || '');
@@ -3532,13 +3532,16 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     list.forEach(x => {
       const c = cleanTitle(x.song) || x.song;
       if (c !== x.song) { x.song = c; changed = true; }
-      if (out.length && songKey(out[out.length - 1].song) === songKey(x.song)) { changed = true; return; }
+      // 1.7–1.22 read RW's own backup lines back wrong: "SoundCloud – Artist – Song" (station: the list). Repair it.
+      const g = x.song.match(/^(SoundCloud|Bandcamp|Audius|Internet Archive) – (.+)$/);
+      if (g && !String(x.station || '').startsWith(g[1])) { x.song = g[2]; x.station = g[1] + (x.station ? ' · ' + x.station : ''); changed = true; }
+      if (out.some(y => songKey(y.song) === songKey(x.song) && Math.abs((y.at || 0) - (x.at || 0)) < 864e5 * 400)) { changed = true; return; }
       out.push(x);
     });
     return { out, changed };
   };
   let r = fix(heard); if (r.changed) { heard = r.out; safeSet('rw_heard', JSON.stringify(heard)); }
-  r = fix(saved); if (r.changed) { saved = r.out; safeSet('rw_saved', JSON.stringify(saved)); }
+  r = fix(saved); if (r.changed) { saved = r.out; safeSet('rw_saved', JSON.stringify(saved)); setTimeout(() => autoSave('songs'), 3000); }
 }
 
 // Backups (like the casters'): Markdown files in a folder you pick, one per kind and per device:
@@ -3591,14 +3594,17 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     let m = line.match(/^- \*\*(.+)\*\* · (.*) · (.*) · (\d{4}-\d{2}-\d{2})\s*$/), x = null;
     if (m) x = { song: m[2] ? m[2] + ' – ' + m[1] : m[1], station: m[3], at: Date.parse(m[4] + 'T12:00:00') || Date.now() };
     else if ((m = line.match(/^- \*\*(.+)\*\* · (.*) · (\d{4}-\d{2}-\d{2})\s*$/))) x = { song: m[1], station: m[2], at: Date.parse(m[3] + 'T12:00:00') || Date.now() };
+    // RW's own lines say "Artist – Song · SoundCloud · list": the source isn't an artist.
+    if (m && m.length === 5 && /^(SoundCloud|Bandcamp|Audius|Internet Archive)$/.test(m[2])) x = { song: m[1], station: m[2] + ' · ' + m[3], at: x.at };
     if (x && extra && extra.at) x.at = extra.at;
+    if (extra && extra.song) x = { song: extra.song, station: extra.station || '', at: extra.at || (x && x.at) || Date.now() };   // exact copy (1.22.2+)
     return x;
   };
   const K = {
     songs: {
       file: 'saved-songs', what: 'saved songs', count: () => saved.length,
       text: () => '# RadioWizard · saved songs\n\n' + stamp(plural(saved.length, 'song', 'songs'))
-        + '\n\n' + saved.map(f => '- **' + f.song + '** · ' + (f.station || '') + ' · ' + day(f.at) + hide('rw-song', { at: f.at })).join('\n') + '\n' + goneText(['songs']),
+        + '\n\n' + saved.map(f => '- **' + f.song + '** · ' + (f.station || '') + ' · ' + day(f.at) + hide('rw-song', { at: f.at, song: f.song, station: f.station || '' })).join('\n') + '\n' + goneText(['songs']),
       // Merges a file in: adds what's new, drops what another device removed. Returns how many changed.
       take(old) {
         takeGone(old);
