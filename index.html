@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.22.0';
+const VERSION = '1.22.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2361,6 +2361,7 @@ let scIdx = null, scIdxBusy = '', scIdxRun = false;
 async function scIndex() {
   if (scIdxRun || !NATIVE || !scItems.length) return;
   scIdxRun = true;
+  if (!scIdx || !scIdx.at) scIdxBusy = 'Reading the songs in your playlists…';
   try {
     if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} scIdx = scIdx || { lists: {} }; }
     const todo = scItems.filter(x => x.kind === 'pl' && !(scIdx.lists[x.id] && scIdx.lists[x.id].c === x.count));
@@ -2378,10 +2379,10 @@ async function scIndex() {
         scIdxBusy = 'Reading the songs in your playlists… ' + done + ' / ' + total;
         const m = document.querySelector('.scIdxMsg'); if (m) m.textContent = scIdxBusy;
         if (done % 10 === 0) refresh();
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 60));
       }
     };
-    if (total) { scIdxBusy = 'Reading the songs in your playlists… 0 / ' + total; await Promise.all([work(), work()]); }
+    if (total) { scIdxBusy = 'Reading the songs in your playlists… 0 / ' + total; await Promise.all([work(), work(), work(), work()]); }
     const keep = new Set(scItems.map(x => x.id));
     Object.keys(scIdx.lists).forEach(k => { if (!keep.has(k)) delete scIdx.lists[k]; });
     scIdx.at = Date.now();
