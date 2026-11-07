@@ -2,6 +2,7 @@
 // same window.AndroidCast bridge as the Android app, backed by the commands below:
 //   http_get / probe   web requests without browser limits (the radio directories and Bandcamp block web pages)
 //   bandcamp_*         sign in with Bandcamp's own page; its cookies go along on Bandcamp requests
+//   soundcloud_*       sign in with SoundCloud's own page; its token goes along on SoundCloud API requests
 //   cast_*             finds Google Cast speakers (mDNS) and plays on them with Google's standard player
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -31,6 +32,10 @@ const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 fn bandcamp_cookie() -> Option<String> {
     fs::read_to_string(app_dir().join("bandcamp-cookie.txt")).ok().filter(|s| !s.trim().is_empty())
+}
+
+fn soundcloud_token() -> Option<String> {
+    fs::read_to_string(app_dir().join("soundcloud-token.txt")).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 fn is_bandcamp(url: &str) -> bool {
@@ -67,6 +72,12 @@ fn request(a: &Value, follow: bool, timeout_ms: u64) -> Result<ureq::Response, S
     if is_bandcamp(url) {
         if let Some(c) = bandcamp_cookie() {
             req = req.set("Cookie", c.trim());
+        }
+    }
+    // Signed in to SoundCloud: its API answers as you (private likes and playlists, full Go+ songs).
+    if url.starts_with("https://api-v2.soundcloud.com/") {
+        if let Some(t) = soundcloud_token() {
+            req = req.set("Authorization", &format!("OAuth {t}"));
         }
     }
     let res = match a["body"].as_str() {
@@ -219,6 +230,49 @@ async fn bandcamp_login(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn bandcamp_logout() {
     let _ = fs::remove_file(app_dir().join("bandcamp-cookie.txt"));
+}
+
+/* ---------------- SoundCloud sign-in ---------------- */
+
+#[tauri::command]
+async fn soundcloud_login(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("sclogin") {
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let url: tauri::Url = "https://soundcloud.com/signin".parse().map_err(err)?;
+    WebviewWindowBuilder::new(&app, "sclogin", WebviewUrl::External(url))
+        .title("Sign in to SoundCloud")
+        .inner_size(520.0, 760.0)
+        .build()
+        .map_err(err)?;
+    // Watch for SoundCloud's "oauth_token" cookie (set once you're signed in), then keep it and close.
+    std::thread::spawn(move || {
+        let site: tauri::Url = "https://soundcloud.com/".parse().unwrap();
+        let mut ok = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(1000));
+            let Some(w) = app.get_webview_window("sclogin") else { break };
+            if let Ok(cookies) = w.cookies_for_url(site.clone()) {
+                if let Some(c) = cookies.iter().find(|c| c.name() == "oauth_token" && !c.value().is_empty()) {
+                    let _ = fs::create_dir_all(app_dir());
+                    ok = fs::write(app_dir().join("soundcloud-token.txt"), c.value()).is_ok();
+                    let _ = w.close();
+                    break;
+                }
+            }
+        }
+        let ok = ok || soundcloud_token().is_some();
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.eval(format!("window.onSoundcloudLogin && window.onSoundcloudLogin({ok})"));
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn soundcloud_logout() {
+    let _ = fs::remove_file(app_dir().join("soundcloud-token.txt"));
 }
 
 /* ---------------- Finding speakers ---------------- */
@@ -706,7 +760,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, icy, bandcamp_login, bandcamp_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
+            http_get, probe, icy, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

@@ -94,6 +94,8 @@
     probe(id, args) { inv('probe', { args }).then(r => http(id, r), e => http(id, { ok: false, error: String(e) })); },
     bandcampLogin() { inv('bandcamp_login'); },
     bandcampLogout() { inv('bandcamp_logout'); },
+    soundcloudLogin() { inv('soundcloud_login'); },
+    soundcloudLogout() { inv('soundcloud_logout'); },
     ready() { startPolling(); },
     pickSpeaker(id) { openPicker(id); },
     load(id, args) { result(id, inv('cast_load', { args })); },

@@ -483,7 +483,8 @@
   <h3>SoundCloud</h3>
   <div class="row" style="justify-content:flex-start">
     <button type="button" id="scRefresh">Reload my SoundCloud</button>
-    <button type="button" id="scForget">Forget my SoundCloud</button>
+    <button type="button" id="scLoginBtn">Sign in to SoundCloud</button>
+    <button type="button" id="scForget">Sign out / forget</button>
   </div>
 </dialog>
 
@@ -501,7 +502,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1859,6 +1860,8 @@ let scUser = safeGet('rw_sc_user') || '';
 let scItems = readJSON('rw_sc_items', []);   // [{ id, title, artist, art, kind: 'likes'|'uploads'|'pl', pid, count, tracks? }]
 let scBusy = '', scFilter = '', scAlbum = null, scShown = [], scHits = [], scMore = 150;
 let scCid = safeGet('rw_sc_cid') || '';
+let scSignedIn = safeGet('rw_sc_in') === 't';
+const SC_LOGIN = () => !!(window.AndroidCast && window.AndroidCast.soundcloudLogin);
 const SC_API = 'https://api-v2.soundcloud.com';
 async function scKey(fresh) {
   if (scCid && !fresh) return scCid;
@@ -1901,7 +1904,13 @@ async function scLoad() {
   if (scBusy) return;
   scBusy = 'Loading SoundCloud…'; render();
   try {
-    const u = await scGet(SC_API + '/resolve?url=' + encodeURIComponent('https://soundcloud.com/' + scUser));
+    let u = null;
+    if (scSignedIn) {
+      try { u = await scGet(SC_API + '/me'); } catch (e) { diag('soundcloud /me failed: ' + e.message); }
+      if (u && u.permalink) { scUser = u.permalink; safeSet('rw_sc_user', scUser); }
+      else if (!scUser) { scSignedIn = false; safeSet('rw_sc_in', ''); throw new Error('SoundCloud didn’t say who you are. Sign in again, or type your SoundCloud name.'); }
+    }
+    if (!u) u = await scGet(SC_API + '/resolve?url=' + encodeURIComponent('https://soundcloud.com/' + scUser));
     if (!u || u.kind !== 'user') throw new Error('That SoundCloud page wasn’t found.');
     const likes = await scPages(SC_API + '/users/' + u.id + '/likes?limit=200&linked_partitioning=1', 40);
     const ups = await scPages(SC_API + '/users/' + u.id + '/tracks?limit=200&linked_partitioning=1', 10);
@@ -1973,9 +1982,10 @@ function scView() {
     return '<div class="bcForm"><div>Play and cast your SoundCloud likes, uploads and playlists.</div>'
       + '<input class="field" id="scName" placeholder="Your SoundCloud name (soundcloud.com/…)" value="' + esc(scUser) + '" autocapitalize="off" autocomplete="off">'
       + '<button class="btn main" id="scGo">Load my SoundCloud</button>'
-      + '<div class="hint" style="margin-top:0">Reads what your SoundCloud profile shows (likes, uploads, playlists). No sign-in needed. The speaker plays straight from SoundCloud.</div></div>';
+      + (SC_LOGIN() ? '<button class="btn" id="scLogin">' + (scSignedIn ? 'Signed in ✓' : 'Sign in to SoundCloud') + '</button>' : '')
+      + '<div class="hint" style="margin-top:0">Type your name to load what your profile shows, or sign in to also get private likes and playlists (and full songs with Go+). Your password goes to SoundCloud’s own page and stays on this device. The speaker plays straight from SoundCloud.</div></div>';
   }
-  h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b> · ' + (scBusy ? esc(scBusy) : scSongs().length + ' songs') + '</div>'
+  h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scSongs().length + ' songs') + '</div>'
     + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
   h += '<div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
     + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>';
@@ -1994,7 +2004,8 @@ function scListHtml() {
 }
 function scWire() {
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-  on('scGo', () => { const n = ($('scName').value || '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n) return; scUser = n; safeSet('rw_sc_user', scUser); scLoad(); });
+  on('scGo', () => { const n = ($('scName').value || '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !scSignedIn) return; scUser = n || scUser; safeSet('rw_sc_user', scUser); scLoad(); });
+  on('scLogin', () => { if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
   on('scBack', () => { scAlbum = null; render(); });
   on('scPlayAll', () => scPlayAlbum(scAlbum, 0));
   on('scShuf', () => scPlayAlbum(scAlbum, -1));
@@ -2043,12 +2054,21 @@ async function playHls(url) {
   scHls.attachMedia(audio);
 }
 $('scRefresh').addEventListener('click', () => { $('scDlg').close(); scLoad(); });
+$('scLoginBtn').addEventListener('click', () => { $('scDlg').close(); if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
 $('scForget').addEventListener('click', () => {
   $('scDlg').close();
-  scItems = []; scUser = ''; scAlbum = null;
-  ['rw_sc_items', 'rw_sc_user'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  scItems = []; scUser = ''; scAlbum = null; scSignedIn = false;
+  ['rw_sc_items', 'rw_sc_user', 'rw_sc_in'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  if (window.AndroidCast && window.AndroidCast.soundcloudLogout) window.AndroidCast.soundcloudLogout();
   render();
 });
+$('scLoginBtn').hidden = !SC_LOGIN();
+window.onSoundcloudLogin = ok => {
+  diag('soundcloud sign-in: ' + (ok ? 'yes' : 'closed'));
+  if (!ok) return;
+  scSignedIn = true; safeSet('rw_sc_in', 't');
+  scLoad();
+};
 $('scDlg').addEventListener('click', e => { if (e.target === $('scDlg')) $('scDlg').close(); });
 
 // ── Song info, cover art, time bar, Recently played and Saved songs ─
