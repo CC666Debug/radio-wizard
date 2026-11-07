@@ -335,7 +335,10 @@
   .volRow .iconBtn { font-size: 1.05rem; }
   #songsList { max-height: 60dvh; overflow: auto; }
   .dragH { cursor: grab; touch-action: none; font-size: 1.25rem; padding: 6px 8px; color: var(--muted); -webkit-user-select: none; user-select: none; }
-  li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); opacity: .95; }
+  li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); will-change: transform; }
+  li.dragging.settle { transition: transform .15s ease-out; }
+  li.shift { transition: transform .18s ease; will-change: transform; }
+  body.rwDrag { -webkit-user-select: none; user-select: none; cursor: grabbing; }
   li.dragging .dragH { cursor: grabbing; color: var(--accent); }
   li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
   li.song .sTop { display: flex; align-items: center; gap: 6px; }
@@ -540,7 +543,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.16.0';
+const VERSION = '1.16.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -2805,6 +2808,7 @@ function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.
   addEventListener('scroll', () => {
     const y = scrollY, dy = y - lastY;
     $('toTop').hidden = y < 700;
+    if (rwDragging) { lastY = y; return; }   // dragging a playlist row: keep the player as it is
     if (y <= 2) { setMini(false); lastY = y; return; }   // back at the very top: full player
     if (dy > 4) { setMini(true); lastY = y; }            // the list started moving up: shrink right away
     else if (dy < -6) { setMini(false); lastY = y; }     // scrolled up a bit: full player
@@ -2904,42 +2908,68 @@ els.main.addEventListener('click', e => {
   const row = e.target.closest('[data-pli]');
   if (row) playPlaylist(pl, +row.dataset.pli, false);
 }, true);
-// Drag and drop to reorder a playlist: grab ⠿ (finger or mouse), the row follows, the others make room;
-// near the top/bottom edge the page scrolls by itself.
+// Drag and drop to reorder a playlist: grab ⠿ (finger or mouse). The row follows the pointer, the rows it passes
+// glide aside, and the list itself only changes once, on drop (nothing jumps mid-drag). Near the top/bottom edge
+// the page scrolls by itself; the mini player stays as it is while dragging.
+let rwDragging = false;
 els.main.addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-drag]');
-  if (!h || tab !== 'pl' || e.button > 0) return;
+  if (!h || tab !== 'pl' || e.button > 0 || rwDragging) return;
   const pl = plOpen && pls.find(p => p.id === plOpen); if (!pl) return;
   const li = h.closest('li'), ul = li.parentElement;
+  const rows = [...ul.querySelectorAll(':scope > li[data-pli]')];
+  const from = rows.indexOf(li); if (from < 0) return;
   e.preventDefault();
-  h.setPointerCapture(e.pointerId);
-  const grab = e.clientY - li.getBoundingClientRect().top;
-  let y = e.clientY, raf = 0, done = false;
+  try { h.setPointerCapture(e.pointerId); } catch (err) {}
+  rwDragging = true;
+  const pos = rows.map(r => { const b = r.getBoundingClientRect(); return { top: b.top + scrollY, h: b.height }; });
+  const gap = rows.length > 1 ? Math.max(0, pos[1].top - pos[0].top - pos[0].h) : 0;
+  const step = pos[from].h + gap;
+  const startDoc = e.clientY + scrollY;
+  let y = e.clientY, to = from, raf = 0, done = false;
+  document.body.classList.add('rwDrag');
   li.classList.add('dragging');
-  const place = () => {
-    li.style.transform = '';
-    const top = li.getBoundingClientRect().top;
-    li.style.transform = 'translateY(' + (y - grab - top) + 'px)';
-    const prev = li.previousElementSibling, next = li.nextElementSibling;
-    if (prev) { const b = prev.getBoundingClientRect(); if (y - grab < b.top + b.height / 2) { ul.insertBefore(li, prev); return place(); } }
-    if (next) { const b = next.getBoundingClientRect(); if (y - grab + li.offsetHeight > b.top + b.height / 2) { ul.insertBefore(next, li); return place(); } }
+  rows.forEach(r => { if (r !== li) r.classList.add('shift'); });
+  const update = () => {
+    const dy = y + scrollY - startDoc;
+    li.style.transform = 'translate3d(0,' + dy + 'px,0)';
+    const mid = pos[from].top + dy + pos[from].h / 2;
+    let t = from;
+    while (t < rows.length - 1 && mid > pos[t + 1].top + pos[t + 1].h / 2) t++;
+    while (t > 0 && mid < pos[t - 1].top + pos[t - 1].h / 2) t--;
+    if (t === to) return;
+    to = t;
+    rows.forEach((r, k) => {
+      if (r === li) return;
+      const off = from < to && k > from && k <= to ? -step : to < from && k >= to && k < from ? step : 0;
+      r.style.transform = off ? 'translate3d(0,' + off + 'px,0)' : '';
+    });
   };
   const tick = () => {
     if (done) return;
-    const topEdge = (document.querySelector('header.top') || {}).getBoundingClientRect?.().bottom || 0;
-    const v = y < topEdge + 60 ? -Math.min(18, (topEdge + 60 - y) / 3) : y > innerHeight - 60 ? Math.min(18, (y - innerHeight + 60) / 3) : 0;
-    if (v) { scrollBy(0, v); place(); }
+    const top = (document.querySelector('header.top') || document.body).getBoundingClientRect().bottom;
+    const zone = 70;
+    const v = y < top + zone ? -Math.min(16, (top + zone - y) / 4) : y > innerHeight - zone ? Math.min(16, (y - innerHeight + zone) / 4) : 0;
+    if (v) { scrollBy(0, v); update(); }
     raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);
-  const move = ev => { y = ev.clientY; place(); };
+  const move = ev => { y = ev.clientY; update(); };
   const end = () => {
+    if (done) return;
     done = true; cancelAnimationFrame(raf);
     h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
-    li.classList.remove('dragging'); li.style.transform = '';
-    const order = [...ul.querySelectorAll('[data-pli]')].map(x => +x.dataset.pli);
-    if (order.some((v, i) => v !== i)) { const old = pl.items; pl.items = order.map(i => old[i]); plCtx = null; savePls(); }
-    render();
+    // Glide the row into its new slot, then redraw the list in the new order.
+    li.classList.add('settle');
+    li.style.transform = 'translate3d(0,' + (pos[to].top - pos[from].top + (to > from ? pos[to].h - pos[from].h : 0)) + 'px,0)';
+    setTimeout(() => {
+      document.body.classList.remove('rwDrag');
+      if (to !== from) { const [it] = pl.items.splice(from, 1); pl.items.splice(to, 0, it); plCtx = null; savePls(); }
+      const sy = scrollY;
+      render();
+      if (scrollY !== sy) scrollTo(0, sy);
+      rwDragging = false;
+    }, 160);
   };
   h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
 });
