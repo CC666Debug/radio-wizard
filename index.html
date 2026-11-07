@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.23.0';
+const VERSION = '1.24.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1095,13 +1095,14 @@ function recentMusic(queue, i) {
   });
   if (bc) bc.rkey = key;
 }
-async function playRecentMusic(x) {
+async function playRecentMusic(x, opt) {
   if (!x) return;
+  const nav = !(opt && opt.nav === false);
   // A playlist, SoundCloud list or Bandcamp album opens right up (and plays, unless it's already the one playing).
   if (x.m === 'pl') {
     const pl = pls.find(p => p.id === x.plId); if (!pl) { showNotice('That playlist isn’t here any more.'); return; }
     const on = !!(plCtx && plCtx.id === pl.id);
-    tab = 'pl'; setTabs(); plOpen = pl.id; render(); window.scrollTo(0, 0);
+    tab = 'pl'; safeSet('rw_tab', tab); setTabs(); plOpen = pl.id; render(); window.scrollTo(0, 0);
     if (!on) playPlaylist(pl, 0, false);
     return;
   }
@@ -1113,16 +1114,12 @@ async function playRecentMusic(x) {
       if (x.ref.sc) {
         const item = scItems.find(y => y.id === x.ref.sc);
         if (!item) { showNotice('That SoundCloud list isn’t loaded here. Open the SoundCloud tab first.'); return; }
-        tab = 'sc'; setTabs(); scFilter = '';
-        await scOpenAlbum(item);
-        if (on) return;
-        list = ((scAlbum && scAlbum.tracks) || []).filter(scPlayable);
+        if (nav) { tab = 'sc'; safeSet('rw_tab', tab); setTabs(); scFilter = ''; await scOpenAlbum(item); if (on) return; list = ((scAlbum && scAlbum.tracks) || []).filter(scPlayable); }
+        else list = (await scTracks(item)).filter(scPlayable);
       } else {
         const item = bcItems.find(y => y.url === x.ref.bc) || { url: x.ref.bc, title: x.name, artist: '', art: x.art };
-        tab = 'bc'; setTabs();
-        await bcOpenAlbum(item);
-        if (on) return;
-        list = ((bcAlbum && bcAlbum.tracks) || []).filter(y => y.url);
+        if (nav) { tab = 'bc'; safeSet('rw_tab', tab); setTabs(); await bcOpenAlbum(item); if (on) return; list = ((bcAlbum && bcAlbum.tracks) || []).filter(y => y.url); }
+        else list = (await bcTracks(item)).filter(y => y.url);
       }
     } catch (e) {}
     if (!list.length) { showNotice('Couldn’t get those songs from ' + x.src + '. Try again.'); return; }
@@ -1158,9 +1155,9 @@ function recentMusicRow(x, ri) {
 }
 
 // ── Showing it ──────────────────────────────────
-let tab = 'search';
+let tab = (() => { const t = safeGet('rw_tab'); return t && document.querySelector('.tab[data-tab="' + t + '"]') ? t : 'search'; })();   // reopens on the tab you were on
 function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; setTabs(); render(); window.scrollTo(0, 0); }));
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; safeSet('rw_tab', tab); setTabs(); render(); window.scrollTo(0, 0); }));
 
 // Front-page pills: the starters plus every search you make; only removed by holding a pill → Delete.
 let pickSel = null;   // Set while picking pills to delete
@@ -1442,6 +1439,41 @@ $('noticeClose').addEventListener('click', hideNotice);
 // ── Playing ─────────────────────────────────────
 // current = the station chosen (playing here or on the speaker). streamsFor() gives every link to try, best first.
 let current = readJSON('rw_current', null);
+// The last song played (Bandcamp, SoundCloud, Audius, Archive, a playlist): shown in the player when RW opens,
+// and ▶ starts that song again from its beginning, in the same album / list / playlist / shuffle.
+let lastPlay = readJSON('rw_last', null), resumeBusy = false;
+function saveLast() {
+  const t = bc && bcTrack(); if (!t) return;
+  const rk = bc.rkey || '';
+  lastPlay = { t: bcItem(t), art: t.art || '', key: rk, pl: plCtx ? { id: plCtx.id, order: plCtx.order, i: plCtx.i } : null, shuf: /^m\|shuf\|/.test(rk) ? rk.split('|')[2] : null };
+  safeSet('rw_last', JSON.stringify(lastPlay));
+}
+function dropLast() { lastPlay = null; try { localStorage.removeItem('rw_last'); } catch (e) {} }
+async function resumeLast() {
+  const L = lastPlay; if (!L || resumeBusy) return;
+  resumeBusy = true;
+  showNotice('Starting ' + L.t.title + '…');
+  try {
+    const pl = L.pl && pls.find(p => p.id === L.pl.id);
+    if (pl) {
+      const order = (L.pl.order || []).filter(i => i < pl.items.length);
+      plCtx = { id: pl.id, order: order.length ? order : pl.items.map((_, i) => i), i: Math.min(L.pl.i || 0, Math.max(0, order.length - 1)) };
+      plGo(); return;
+    }
+    if (L.shuf) {
+      const r = await plResolve(L.t).catch(() => null);
+      if (r) { recentAct = L.shuf; bcStart([r], 0, true); if (bc) bc.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; return; }
+    }
+    const x = L.key && recent.find(r => r.key === L.key && r.m === 'list');
+    if (x && (x.ref || (x.items && x.items.length > 1))) {
+      const id = it => it.sc || it.ms || (it.title + '#' + it.n);
+      const y = x.ref ? { ...x, start: L.t.sc || L.t.n, startT: L.t.title } : { ...x, i: Math.max(0, x.items.findIndex(it => id(it) === id(L.t))) };
+      await playRecentMusic(y, { nav: false }); return;
+    }
+    const r = await plResolve(L.t).catch(() => null);
+    if (r) bcStart([r], 0, false); else showNotice('Couldn’t get that song. Try again.');
+  } finally { resumeBusy = false; renderBar(); }
+}
 let here = null;      // { st, links, i } while playing on this device
 let hereState = 'idle';   // idle | starting | playing
 async function streamsFor(st) {
@@ -1463,6 +1495,7 @@ function choose(st) {
   if (st.play) current.play = st.play;
   safeSet('rw_current', JSON.stringify(current));
   if (!plCtx) addRecent(st);   // a station inside a playlist: Recent shows the playlist instead
+  dropLast();
   const rbSrc = st.srcs.find(s => s.src === 'rb' && s.rid);
   if (rbSrc) rb('/json/url/' + rbSrc.rid).catch(() => {});   // counts the play for Radio Browser
 }
@@ -1707,6 +1740,7 @@ els.castBtn.addEventListener('click', () => {
 // ── Controls ────────────────────────────────────
 els.playBtn.addEventListener('click', () => {
   if (bc) { bcToggle(); return; }
+  if (lastPlay && !here && !(castConnected() && castActive())) { resumeLast(); renderBar(); return; }
   if (castConnected()) {
     if (castActive()) { if (speakerPaused()) ctrl.playOrPause(); else { ctrl.stop(); songStop(); songWatchFor = null; } speakerStation = null; }
     else if (current) loadOnSpeaker(current);
@@ -1820,6 +1854,7 @@ function renderBar() {
   drawClock();
   paintVol();
   if (bc) { bcRenderBar(cast, dev); return; }
+  if (lastPlay && !here && !(cast && castActive())) { lastRenderBar(); return; }
   const st = current;
   els.npName.textContent = st ? st.name : 'Nothing playing';
   const artNow = songArt || (st && st.img) || 'icon-192.png';
@@ -2094,6 +2129,7 @@ function bcGo(pos) {
   bc.startAt = Date.now();
   bc.state = 'starting';
   diag(trkSrc(t).toLowerCase() + ' ' + (bc.where === 'speaker' ? 'to speaker' : 'here') + ': ' + t.artist + ' – ' + t.title);
+  saveLast();
   if (bc.where === 'speaker' && castConnected()) bcLoadSpeaker(pos);
   else { bc.where = 'here'; bcPlayHere(pos); }
   renderBar(); if ((tab === 'bc' && bcAlbum) || (tab === 'sc' && scAlbum)) render();
@@ -2167,6 +2203,22 @@ function bcStop() {
   bc = null; bcPre = null;
   if (wasSpeaker && castActive()) ctrl.stop();
   else { hlsDrop(); audio.pause(); audio.removeAttribute('src'); audio.load(); }
+}
+function lastRenderBar() {
+  const t = lastPlay.t;
+  els.npName.textContent = t.title;
+  const art = lastPlay.art || t.art || 'icon-192.png';
+  if (els.npArt.getAttribute('src') !== art) els.npArt.src = art;
+  els.npArt.onerror = () => { els.npArt.onerror = null; els.npArt.src = 'icon-192.png'; };
+  els.npHeart.hidden = true;
+  const where = lastPlay.pl ? (pls.find(p => p.id === lastPlay.pl.id) || {}).name : lastPlay.shuf ? 'Shuffle' : t.album;
+  els.npSub.textContent = (resumeBusy ? 'Starting… · ' : '') + [t.artist, where].filter(Boolean).join(' · ');
+  els.npSub.classList.toggle('live', false);
+  els.npArt.classList.toggle('spin', resumeBusy);
+  barBusy = resumeBusy;
+  setLabel(resumeBusy ? 'Starting' : 'Ready', false);
+  els.playBtn.disabled = false;
+  els.playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
 }
 function bcRenderBar(cast, dev) {
   const t = bcTrack();
