@@ -313,6 +313,10 @@
   .prog { display: flex; align-items: center; gap: 8px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pTrack { flex: 1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
   .pTrack i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .pSeek { flex: 1; display: flex; align-items: center; padding: 10px 0; margin: -10px 0; touch-action: none; }
+  .pSeek.can { cursor: pointer; }
+  .pSeek.can .pTrack { height: 6px; }
+  .pSeek.drag .pTrack i { background: var(--accent); }
   .volRow .iconBtn { font-size: 1.05rem; }
   #songsList { max-height: 60dvh; overflow: auto; }
   li.song { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
@@ -366,7 +370,7 @@
           <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart" id="songHeart" title="Save this song" hidden>♡</button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
         </div>
       </div>
-      <div class="prog" id="prog" hidden><div class="pTrack"><i id="pFill"></i></div><button class="pTime" id="pD" type="button" title="Tap to change how the time shows">0:00</button></div>
+      <div class="prog" id="prog" hidden><div class="pSeek" id="pSeek"><div class="pTrack"><i id="pFill"></i></div></div><button class="pTime" id="pD" type="button" title="Tap to change how the time shows">0:00</button></div>
       <div class="row">
         <button class="iconBtn" id="shufBtn" title="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
         <button class="iconBtn" id="prevBtn" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
@@ -502,7 +506,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.12.2';
+const VERSION = '1.13.0';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1791,7 +1795,7 @@ function bcLoadSpeaker(pos) {
 }
 function bcSpeakerState(media) {
   const PS = chrome.cast.media.PlayerState, IR = chrome.cast.media.IdleReason;
-  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
+  if (player.playerState === PS.PLAYING) { if (bc.seekPause) { bc.seekPause = false; ctrl.playOrPause(); } bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
   if (player.playerState === PS.PAUSED) { bc.state = 'paused'; bcClockPause(); return; }
   if (player.playerState !== PS.IDLE || bc.state === 'starting' && !(media && media.idleReason)) return;
   const why = media && media.idleReason;
@@ -2266,7 +2270,7 @@ async function findArt(title) {
 
 // ── The time bar ──
 // Radio: only when the station says how long the song is (laut.fm). Bandcamp: always.
-const pEls = { box: $('prog'), d: $('pD'), fill: $('pFill') };
+const pEls = { box: $('prog'), d: $('pD'), fill: $('pFill'), seek: $('pSeek') };
 // Tap the time to switch between these; the choice is remembered on this device (like the casters).
 const TIME_STYLES = [
   (e, d) => bcTime(e) + ' / ' + bcTime(d),              // 1:26 / 2:23
@@ -2294,11 +2298,52 @@ function drawClock() {
   const c = songClock();
   if (!c || !isFinite(c.dur) || c.dur <= 0) { pEls.box.hidden = true; return; }
   pEls.box.hidden = false;
-  const pos = Math.max(0, Math.min(c.pos, c.dur));
+  pEls.seek.classList.toggle('can', canSeek());
+  const pos = seekDrag != null ? seekDrag * c.dur : Math.max(0, Math.min(c.pos, c.dur));
   pEls.d.textContent = TIME_STYLES[timeStyle](pos, c.dur);
   pEls.fill.style.width = (pos / c.dur * 100).toFixed(2) + '%';
 }
 setInterval(drawClock, 500);
+
+// ── Scrubbing: tap or drag the bar (Bandcamp / SoundCloud songs; radio can't jump) ──
+let seekDrag = null;   // 0..1 while a finger is on the bar
+function canSeek() { return !!(bc && bcTrack() && (bc.state === 'playing' || bc.state === 'paused')); }
+function seekTo(sec) {
+  const c = songClock();
+  if (!canSeek() || !c || !(c.dur > 0)) return;
+  sec = Math.max(0, Math.min(sec, c.dur - 1));
+  diag('seek to ' + bcTime(sec));
+  if (bc.where === 'here') { try { audio.currentTime = sec; } catch (e) {} drawClock(); return; }
+  // Speaker: send the song again from the new spot (works the same with every cast route, no app update needed).
+  const wasPaused = bc.state === 'paused';
+  bcLoadSpeaker(sec);
+  bcClock.pos = sec;
+  if (wasPaused) bc.seekPause = true;   // keep it paused after the jump
+  drawClock();
+}
+function seekFrac(e) { const r = pEls.seek.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); }
+pEls.seek.addEventListener('pointerdown', e => {
+  if (!canSeek()) return;
+  e.preventDefault(); e.stopPropagation();
+  pEls.seek.setPointerCapture(e.pointerId);
+  pEls.seek.classList.add('drag');
+  seekDrag = seekFrac(e); drawClock();
+});
+pEls.seek.addEventListener('pointermove', e => { if (seekDrag == null) return; seekDrag = seekFrac(e); drawClock(); });
+function seekEnd(e, go) {
+  if (seekDrag == null) return;
+  const f = seekFrac(e), c = songClock();
+  seekDrag = null; pEls.seek.classList.remove('drag');
+  if (go && c) seekTo(f * c.dur); else drawClock();
+}
+pEls.seek.addEventListener('pointerup', e => seekEnd(e, true));
+pEls.seek.addEventListener('pointercancel', e => seekEnd(e, false));
+pEls.seek.addEventListener('click', e => e.stopPropagation());
+if ('mediaSession' in navigator) {
+  try { navigator.mediaSession.setActionHandler('seekto', d => { if (d && d.seekTime != null) seekTo(d.seekTime); }); } catch (e) {}
+  try { navigator.mediaSession.setActionHandler('seekforward', d => { const c = songClock(); if (c) seekTo(c.pos + (d && d.seekOffset || 10)); }); } catch (e) {}
+  try { navigator.mediaSession.setActionHandler('seekbackward', d => { const c = songClock(); if (c) seekTo(c.pos - (d && d.seekOffset || 10)); }); } catch (e) {}
+}
 
 // ── Song heart, Recently played and Saved songs ──
 const isSaved = t => saved.some(x => songKey(x.song) === songKey(t));
