@@ -516,7 +516,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.14.0';
+const VERSION = '1.14.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1787,12 +1787,14 @@ function bcPlayHere(pos) {
   audio.play().catch(err => diag('play() refused: ' + err.message));
   renderBar();
 }
-function bcLoadSpeaker(pos) {
+function bcLoadSpeaker(pos, seek) {
   const session = ctx && ctx.getCurrentSession();
   const t = bcTrack();
   if (!session || !t) return;
-  bc.where = 'speaker'; bc.state = 'starting';
-  bcClock.start = 0; bcClock.pos = pos || 0; bcClock.paused = true;
+  bc.where = 'speaker';
+  if (seek) {   // a jump in the same song: the speaker often doesn't report any change, so don't wait for one
+    bcClock.pos = pos || 0; bcClock.paused = seek.paused; bcClock.start = performance.now() - bcClock.pos * 1000;
+  } else { bc.state = 'starting'; bcClock.start = 0; bcClock.pos = pos || 0; bcClock.paused = true; }
   const info = new chrome.cast.media.MediaInfo(t.url, t.mime || 'audio/mpeg');
   info.streamType = chrome.cast.media.StreamType.BUFFERED;
   const md = new chrome.cast.media.GenericMediaMetadata();
@@ -1801,15 +1803,20 @@ function bcLoadSpeaker(pos) {
   md.images = [new chrome.cast.Image(t.art || new URL('icon-512.png', location.href).href)];
   info.metadata = md;
   const req = new chrome.cast.media.LoadRequest(info);
-  req.autoplay = true;
+  req.autoplay = !(seek && seek.paused);
   if (pos) req.currentTime = pos;
   bc.sent = t.url;
-  session.loadMedia(req).then(() => diag('speaker accepted the song')).catch(err => { diag('speaker REFUSED the song · ' + err); if (bc && bc.sent === t.url) bcNext(); });
+  session.loadMedia(req).then(() => {
+    diag('speaker accepted the song');
+    // A jump while paused: the phone / Windows apps always start playing what they send, so pause it again.
+    const m = seek && seek.paused && session.getMediaSession && session.getMediaSession();
+    if (m) m.pause(new chrome.cast.media.PauseRequest(), () => {}, () => {});
+  }).catch(err => { diag('speaker REFUSED the song · ' + err); if (bc && bc.sent === t.url) bcNext(); });
   renderBar();
 }
 function bcSpeakerState(media) {
   const PS = chrome.cast.media.PlayerState, IR = chrome.cast.media.IdleReason;
-  if (player.playerState === PS.PLAYING) { if (bc.seekPause) { bc.seekPause = false; ctrl.playOrPause(); } bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
+  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
   if (player.playerState === PS.PAUSED) { bc.state = 'paused'; bcClockPause(); return; }
   if (player.playerState !== PS.IDLE || bc.state === 'starting' && !(media && media.idleReason)) return;
   const why = media && media.idleReason;
@@ -2523,10 +2530,7 @@ function seekTo(sec) {
   diag('seek to ' + bcTime(sec));
   if (bc.where === 'here') { try { audio.currentTime = sec; } catch (e) {} drawClock(); return; }
   // Speaker: send the song again from the new spot (works the same with every cast route, no app update needed).
-  const wasPaused = bc.state === 'paused';
-  bcLoadSpeaker(sec);
-  bcClock.pos = sec;
-  if (wasPaused) bc.seekPause = true;   // keep it paused after the jump
+  bcLoadSpeaker(sec, { paused: bc.state === 'paused' });   // stays paused if it was
   drawClock();
 }
 function seekFrac(e) { const r = pEls.seek.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); }
