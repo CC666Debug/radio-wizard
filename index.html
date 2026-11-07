@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.24.2';
+const VERSION = '1.25.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1622,7 +1622,7 @@ window.__onGCastApiAvailable = function (available) {
       if (bc && bc.where === 'here') { const pos = audio.currentTime || 0; audio.pause(); bc.where = 'speaker'; bcLoadSpeaker(pos); }
       else if (here && current) { stopHere(); loadOnSpeaker(current); }
     }
-    if (e.sessionState === S.SESSION_RESUMED) speakerStation = current;
+    if (e.sessionState === S.SESSION_RESUMED) { if (speakerHasLast()) adoptSpeakerMusic(); else if (!bc) speakerStation = current; }
     if (e.sessionState === S.SESSION_START_FAILED) showNotice('The speaker didn’t accept the connection. Try again.');
     if (e.sessionState === S.SESSION_ENDING) {
       if (bc && bc.where === 'speaker') bc.carry = castActive() && !speakerPaused() ? { pos: player.currentTime || 0 } : null;
@@ -1668,6 +1668,7 @@ async function loadOnSpeaker(st, links) {
   const t = performance.now();
   diag('sending ' + st.name + ' to ' + session.getCastDevice().friendlyName + ' · ' + l.url);
   safeSet('rw_cast', l.url);
+  try { localStorage.removeItem('rw_cast_m'); } catch (e) {}
   kickStart();
   session.loadMedia(req).then(() => {
     diag('speaker accepted after ' + ((performance.now() - t) / 1000).toFixed(2) + 's'); kickStart();
@@ -1696,6 +1697,43 @@ function watchStall() {
   }, NUDGE_AFTER);
 }
 let lastSpeakerState = null;
+// RW reopened while the speaker plays the song it sent before: pick that song (and its album / list / playlist /
+// shuffle) back up, instead of taking it for the last station.
+function speakerHasLast() {
+  const m = readJSON('rw_cast_m', null), mi = player && player.mediaInfo;
+  if (!lastPlay || !mi || !mi.contentId) return false;
+  if (m && m.url) return mi.contentId === m.url;
+  return mi.contentId !== safeGet('rw_cast');   // sent before RW noted songs: anything that isn't the last station
+}
+function adoptSpeakerMusic() {
+  const L = lastPlay, m = readJSON('rw_cast_m', null) || { url: player.mediaInfo.contentId, at: Date.now() };
+  if (!L || bc) return;
+  const t = Object.assign({}, L.t, { url: m.url, art: L.art || L.t.art, exp: Date.now() + 3600e3 });
+  speakerStation = null; songWatchFor = null; songStop();
+  bc = { queue: [t], i: 0, shuffle: false, where: 'speaker', state: 'playing', rkey: L.key, sent: m.url };
+  bcClock.start = 0; bcClock.pos = Math.max(0, (Date.now() - m.at) / 1000); bcClock.paused = false; bcClockPlaying();
+  diag('speaker is still playing ' + t.title + ': picked it back up');
+  bcRefill(L);
+  renderBar();
+}
+async function bcRefill(L) {
+  const b = bc;
+  const pl = L.pl && pls.find(p => p.id === L.pl.id);
+  if (pl) { plCtx = { id: pl.id, order: (L.pl.order || []).filter(i => i < pl.items.length), i: L.pl.i || 0 }; return; }
+  if (L.shuf) { b.shuffle = true; b.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; return; }
+  const x = L.key && recent.find(r => r.key === L.key && r.m === 'list' && r.ref);
+  if (!x) return;
+  let list = [];
+  try {
+    if (x.ref.sc) { const item = scItems.find(y => y.id === x.ref.sc); if (item) list = (await scTracks(item)).filter(scPlayable); }
+    else list = (await bcTracks({ url: x.ref.bc, title: x.name, art: x.art })).filter(y => y.url);
+  } catch (e) {}
+  if (bc !== b || !list.length) return;
+  const i = list.findIndex(y => L.t.sc ? y.sc === L.t.sc : (y.n === L.t.n && y.title === L.t.title));
+  if (i < 0) return;
+  list[i] = b.queue[0]; b.queue = list; b.i = i;
+  diag('picked back up: song ' + (i + 1) + ' of ' + list.length + ' in ' + x.name);
+}
 function onSpeakerState() {
   const PS = chrome.cast.media.PlayerState;
   if (player.playerState === lastSpeakerState) return;
@@ -1704,6 +1742,7 @@ function onSpeakerState() {
   diag('speaker player: ' + (player.playerState || 'none') + (player.playerState === PS.IDLE && media && media.idleReason ? ' (' + media.idleReason + ')' : ''));
   watchStall();
   lastSpeakerState = player.playerState;
+  if (!bc && speakerHasLast()) adoptSpeakerMusic();
   if (bc && bc.where === 'speaker') { bcSpeakerState(media); return; }
   if (player.playerState === PS.PLAYING) {
     if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
@@ -2172,6 +2211,7 @@ function bcLoadSpeaker(pos, seek) {
   req.autoplay = !(seek && seek.paused);
   if (pos) req.currentTime = pos;
   bc.sent = t.url;
+  safeSet('rw_cast_m', JSON.stringify({ url: t.url, at: Date.now() - (pos || 0) * 1000 }));   // so a reopened RW knows the speaker is playing this song
   session.loadMedia(req).then(() => {
     diag('speaker accepted the song');
     // A jump while paused: the phone / Windows apps always start playing what they send, so pause it again.
