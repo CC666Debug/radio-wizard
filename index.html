@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.22.2';
+const VERSION = '1.22.3';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -3524,6 +3524,14 @@ $('catCancel').addEventListener('click', () => $('catDlg').close());
 $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('catDlg').close(); });
 
 
+// 1.7–1.22.1 read RW's own backup lines back wrong ("SoundCloud – Artist – Song", station: the list) and wrote
+// them out again that way. Puts such an entry right; true if it changed.
+function unGarble(x) {
+  const g = x && String(x.song || '').match(/^(SoundCloud|Bandcamp|Audius|Internet Archive) – (.+)$/);
+  if (!g || String(x.station || '').startsWith(g[1])) return false;
+  x.song = g[2]; x.station = g[1] + (x.station ? ' · ' + x.station : '');
+  return true;
+}
 // Old song lists: entries saved before 1.5.1 can hold iHeart's raw song data; clean them and drop repeats.
 {
   const fix = list => {
@@ -3533,8 +3541,7 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
       const c = cleanTitle(x.song) || x.song;
       if (c !== x.song) { x.song = c; changed = true; }
       // 1.7–1.22 read RW's own backup lines back wrong: "SoundCloud – Artist – Song" (station: the list). Repair it.
-      const g = x.song.match(/^(SoundCloud|Bandcamp|Audius|Internet Archive) – (.+)$/);
-      if (g && !String(x.station || '').startsWith(g[1])) { x.song = g[2]; x.station = g[1] + (x.station ? ' · ' + x.station : ''); changed = true; }
+      if (unGarble(x)) changed = true;
       if (out.some(y => songKey(y.song) === songKey(x.song) && Math.abs((y.at || 0) - (x.at || 0)) < 864e5 * 400)) { changed = true; return; }
       out.push(x);
     });
@@ -3598,6 +3605,7 @@ $('catDlg').addEventListener('click', e => { if (e.target === $('catDlg')) $('ca
     if (m && m.length === 5 && /^(SoundCloud|Bandcamp|Audius|Internet Archive)$/.test(m[2])) x = { song: m[1], station: m[2] + ' · ' + m[3], at: x.at };
     if (x && extra && extra.at) x.at = extra.at;
     if (extra && extra.song) x = { song: extra.song, station: extra.station || '', at: extra.at || (x && x.at) || Date.now() };   // exact copy (1.22.2+)
+    if (x) unGarble(x);
     return x;
   };
   const K = {
