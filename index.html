@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.22.4';
+const VERSION = '1.23.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1097,18 +1097,32 @@ function recentMusic(queue, i) {
 }
 async function playRecentMusic(x) {
   if (!x) return;
-  if (x.m === 'pl') { const pl = pls.find(p => p.id === x.plId); if (!pl) { showNotice('That playlist isn’t here any more.'); return; } playPlaylist(pl, 0, false); return; }
+  // A playlist, SoundCloud list or Bandcamp album opens right up (and plays, unless it's already the one playing).
+  if (x.m === 'pl') {
+    const pl = pls.find(p => p.id === x.plId); if (!pl) { showNotice('That playlist isn’t here any more.'); return; }
+    const on = !!(plCtx && plCtx.id === pl.id);
+    tab = 'pl'; setTabs(); plOpen = pl.id; render(); window.scrollTo(0, 0);
+    if (!on) playPlaylist(pl, 0, false);
+    return;
+  }
   if (x.m === 'shuf') { if (x.act === 'sc') scShuffleAll(); else bcShuffleAll(); return; }
-  showNotice('Starting ' + x.name + '…');
   if (x.ref) {
+    const on = !!(bc && !plCtx && bc.rkey === x.key);
     let list = [];
     try {
       if (x.ref.sc) {
         const item = scItems.find(y => y.id === x.ref.sc);
         if (!item) { showNotice('That SoundCloud list isn’t loaded here. Open the SoundCloud tab first.'); return; }
-        list = (await scTracks(item)).filter(scPlayable);
+        tab = 'sc'; setTabs(); scFilter = '';
+        await scOpenAlbum(item);
+        if (on) return;
+        list = ((scAlbum && scAlbum.tracks) || []).filter(scPlayable);
       } else {
-        list = (await bcTracks({ url: x.ref.bc, title: x.name, art: x.art })).filter(y => y.url);
+        const item = bcItems.find(y => y.url === x.ref.bc) || { url: x.ref.bc, title: x.name, artist: '', art: x.art };
+        tab = 'bc'; setTabs();
+        await bcOpenAlbum(item);
+        if (on) return;
+        list = ((bcAlbum && bcAlbum.tracks) || []).filter(y => y.url);
       }
     } catch (e) {}
     if (!list.length) { showNotice('Couldn’t get those songs from ' + x.src + '. Try again.'); return; }
@@ -1116,6 +1130,7 @@ async function playRecentMusic(x) {
     bcStart(list, Math.max(0, at), false);
     return;
   }
+  showNotice('Starting ' + x.name + '…');
   const albums = new Map(), out = [];
   let at = 0;
   for (let k = 0; k < (x.items || []).length; k++) {
