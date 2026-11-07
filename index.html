@@ -568,7 +568,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.22.3';
+const VERSION = '1.22.4';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -3717,7 +3717,7 @@ function unGarble(x) {
   // Recent stations: the last 30 you played on any device, newest first.
   K.recent = {
     file: 'recent-stations', what: 'recent stations', count: () => recent.length,
-    text: () => '# RadioWizard · recent stations\n\n' + stamp(plural(recent.length, 'station', 'stations')) + '\n\n'
+    text: () => '# RadioWizard · recent stations\n\n' + stamp(plural(recent.length, 'item', 'items')) + '\n\n'
       + recent.map(st => '- **' + md(st.name) + '**' + [st.country, st.at ? day(st.at) : ''].filter(Boolean).map(x => ' · ' + md(x)).join('') + hide('rw-rec', st)).join('\n') + '\n' + goneText(['recent']),
     take(old) {
       takeGone(old);
