@@ -502,7 +502,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.12.0';
+const VERSION = '1.12.1';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1616,10 +1616,10 @@ function bcView() {
   }
   if (!bcItems.length && !bcBusy) {
     h += '<div class="bcForm"><div>Play and cast the music you’ve bought on Bandcamp.</div>'
-      + '<input class="field" id="bcName" placeholder="Your Bandcamp name (bandcamp.com/…)" value="' + esc(bcUser) + '" autocapitalize="off" autocomplete="off">'
+      + (bcSignedIn ? '<div class="hint" style="margin-top:0">Signed in to Bandcamp ✓</div>' : '<input class="field" id="bcName" placeholder="Your Bandcamp name (bandcamp.com/…)" value="' + esc(bcUser) + '" autocapitalize="off" autocomplete="off">')
       + '<button class="btn main" id="bcGo">Load my collection</button>'
-      + '<button class="btn" id="bcLogin">' + (bcSignedIn ? 'Signed in ✓' : 'Sign in to Bandcamp (optional)') + '</button>'
-      + '<div class="hint" style="margin-top:0">Signing in lets every song you bought play in full; without it, some albums only play Bandcamp’s preview. Your password goes to Bandcamp’s own page and stays on this phone.</div></div>';
+      + (bcSignedIn ? '' : '<button class="btn" id="bcLogin">Sign in to Bandcamp (optional)</button>'
+        + '<div class="hint" style="margin-top:0">Signing in lets every song you bought play in full; without it, some albums only play Bandcamp’s preview. Your password goes to Bandcamp’s own page and stays on this phone.</div>') + '</div>';
     return h;
   }
   h += '<div class="bcHead"><div class="who"><b>' + esc(bcUser || 'Bandcamp') + '</b> · ' + (bcBusy ? esc(bcBusy) : bcItems.length + ' items') + '</div>'
@@ -1646,7 +1646,7 @@ function bcListHtml() {
 let bcMore = 150;
 function bcWire() {
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-  on('bcGo', () => { const n = ($('bcName').value || '').trim().replace(/^.*bandcamp\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !bcSignedIn) return; bcUser = n || bcUser; safeSet('rw_bc_user', bcUser); bcLoad(); });
+  on('bcGo', () => { const n = ($('bcName') ? $('bcName').value || '' : '').trim().replace(/^.*bandcamp\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !bcSignedIn) return; bcUser = n || bcUser; safeSet('rw_bc_user', bcUser); bcLoad(); });
   on('bcLogin', () => { if (window.AndroidCast.bandcampLogin) window.AndroidCast.bandcampLogin(); });
   on('bcBack', () => { bcAlbum = null; render(); });
   on('bcPlayAll', () => bcPlayAlbum(bcAlbum, 0));
@@ -1654,7 +1654,7 @@ function bcWire() {
   on('bcAddAll', () => bcAlbum && bcAlbum.tracks && plAsk(bcAlbum.tracks.filter(t => t.url).map(bcItem), bcAlbum.title));
   on('bcFind', () => bcIndex());
   on('bcShufAll', () => bcShuffleAll());
-  on('bcMenu', () => $('bcDlg').showModal());
+  on('bcMenu', () => bcMenuOpen());
   on('bcMoreBtn', () => { bcMore += 150; $('bcList').innerHTML = bcListHtml(); bcWire(); });
   const f = $('bcFilter');
   if (f) f.oninput = () => { bcFilter = f.value; bcMore = 150; $('bcFilterX').hidden = !bcFilter; $('bcList').innerHTML = bcListHtml(); bcWire(); };
@@ -1841,6 +1841,14 @@ function bcRenderBar(cast, dev) {
   els.playBtn.disabled = false;
   els.playIcon.innerHTML = playing ? '<path d="M7 5h4v14H7zm6 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
 }
+function bcMenuOpen() {
+  const canIn = !!(window.AndroidCast && window.AndroidCast.bandcampLogin);
+  $('bcRefresh').hidden = !bcItems.length;
+  $('bcLoginBtn').hidden = bcSignedIn || !canIn;
+  $('bcForget').hidden = !bcSignedIn && !bcItems.length;
+  $('bcForget').textContent = bcSignedIn ? 'Sign out' : 'Forget my collection';
+  $('bcDlg').showModal();
+}
 $('bcRefresh').addEventListener('click', () => { $('bcDlg').close(); bcLoad(); });
 $('bcLoginBtn').addEventListener('click', () => { $('bcDlg').close(); if (window.AndroidCast.bandcampLogin) window.AndroidCast.bandcampLogin(); });
 $('bcForget').addEventListener('click', () => {
@@ -1980,10 +1988,10 @@ function scView() {
   }
   if (!scItems.length && !scBusy) {
     return '<div class="bcForm"><div>Play and cast your SoundCloud likes, uploads and playlists.</div>'
-      + '<input class="field" id="scName" placeholder="Your SoundCloud name (soundcloud.com/…)" value="' + esc(scUser) + '" autocapitalize="off" autocomplete="off">'
+      + (scSignedIn ? '<div class="hint" style="margin-top:0">Signed in to SoundCloud ✓</div>' : '<input class="field" id="scName" placeholder="Your SoundCloud name (soundcloud.com/…)" value="' + esc(scUser) + '" autocapitalize="off" autocomplete="off">')
       + '<button class="btn main" id="scGo">Load my SoundCloud</button>'
-      + (SC_LOGIN() ? '<button class="btn" id="scLogin">' + (scSignedIn ? 'Signed in ✓' : 'Sign in to SoundCloud') + '</button>' : '')
-      + '<div class="hint" style="margin-top:0">Type your name to load what your profile shows, or sign in to also get private likes and playlists (and full songs with Go+). Your password goes to SoundCloud’s own page and stays on this device. The speaker plays straight from SoundCloud.</div></div>';
+      + (!scSignedIn && SC_LOGIN() ? '<button class="btn" id="scLogin">Sign in to SoundCloud (optional)</button>'
+        + '<div class="hint" style="margin-top:0">Type your name to load what your profile shows, or sign in to also get private likes and playlists (and full songs with Go+). Your password goes to SoundCloud’s own page and stays on this device.</div>' : '') + '</div>';
   }
   h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scSongs().length + ' songs') + '</div>'
     + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
@@ -2004,14 +2012,14 @@ function scListHtml() {
 }
 function scWire() {
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-  on('scGo', () => { const n = ($('scName').value || '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !scSignedIn) return; scUser = n || scUser; safeSet('rw_sc_user', scUser); scLoad(); });
+  on('scGo', () => { const n = ($('scName') ? $('scName').value || '' : '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !scSignedIn) return; scUser = n || scUser; safeSet('rw_sc_user', scUser); scLoad(); });
   on('scLogin', () => { if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
   on('scBack', () => { scAlbum = null; render(); });
   on('scPlayAll', () => scPlayAlbum(scAlbum, 0));
   on('scShuf', () => scPlayAlbum(scAlbum, -1));
   on('scAddAll', () => scAlbum && scAlbum.tracks && plAsk(scAlbum.tracks.filter(t => !t.off).map(bcItem), scAlbum.title));
   on('scShufAll', () => scShuffleAll());
-  on('scMenu', () => $('scDlg').showModal());
+  on('scMenu', () => scMenuOpen());
   on('scMoreBtn', () => { scMore += 150; $('scList').innerHTML = scListHtml(); scWire(); });
   const f = $('scFilter');
   if (f) f.oninput = () => { scFilter = f.value; scMore = 150; $('scFilterX').hidden = !scFilter; $('scList').innerHTML = scListHtml(); scWire(); };
@@ -2062,7 +2070,13 @@ $('scForget').addEventListener('click', () => {
   if (window.AndroidCast && window.AndroidCast.soundcloudLogout) window.AndroidCast.soundcloudLogout();
   render();
 });
-$('scLoginBtn').hidden = !SC_LOGIN();
+function scMenuOpen() {
+  $('scRefresh').hidden = !scItems.length;
+  $('scLoginBtn').hidden = scSignedIn || !SC_LOGIN();
+  $('scForget').hidden = !scSignedIn && !scItems.length;
+  $('scForget').textContent = scSignedIn ? 'Sign out' : 'Forget my SoundCloud';
+  $('scDlg').showModal();
+}
 window.onSoundcloudLogin = ok => {
   diag('soundcloud sign-in: ' + (ok ? 'yes' : 'closed'));
   if (!ok) return;
