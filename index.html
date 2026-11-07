@@ -502,7 +502,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.12.1';
+const VERSION = '1.12.2';
 const $ = id => document.getElementById(id);
 const els = {
   q: $('q'), clearQ: $('clearQ'), form: $('searchForm'), main: $('main'), notice: $('notice'), noticeText: $('noticeText'),
@@ -1873,11 +1873,17 @@ const SC_LOGIN = () => !!(window.AndroidCast && window.AndroidCast.soundcloudLog
 const SC_API = 'https://api-v2.soundcloud.com';
 async function scKey(fresh) {
   if (scCid && !fresh) return scCid;
-  const page = await get('https://soundcloud.com/');
+  // Asks as a desktop browser: phones get sent to SoundCloud's mobile site, which keeps its key elsewhere.
+  const DESK = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' };
+  const keep = k => { scCid = k; safeSet('rw_sc_cid', scCid); return scCid; };
+  const page = await get('https://soundcloud.com/', { headers: DESK });
   const js = (page.text.match(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js/g) || []).reverse();
   for (const u of js) {
-    try { const m = (await get(u)).text.match(/client_id[:=]"?([A-Za-z0-9]{32})/); if (m) { scCid = m[1]; safeSet('rw_sc_cid', scCid); return scCid; } } catch (e) {}
+    try { const m = (await get(u, { headers: DESK })).text.match(/client_id[:=]"?([A-Za-z0-9]{32})/); if (m) return keep(m[1]); } catch (e) {}
   }
+  const mob = page.text.match(/client_?[iI]d"?\s*[:=]\s*"([A-Za-z0-9]{32})"/);   // the mobile site's own copy
+  if (mob) return keep(mob[1]);
+  diag('soundcloud key not found (' + page.status + ' ' + page.url + ')');
   throw new Error('Couldn’t reach SoundCloud.');
 }
 async function scGet(url) {
