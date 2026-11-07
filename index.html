@@ -358,6 +358,9 @@
   .dragH { cursor: grab; touch-action: none; font-size: 1.25rem; padding: 6px 8px; color: var(--muted); -webkit-user-select: none; user-select: none; }
   li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); will-change: transform; }
   li.dragging.settle { transition: transform .15s ease-out; }
+  .np .go { cursor: pointer; }
+  header.top:not(.mini) .np .go:hover { text-decoration: underline; text-underline-offset: 3px; }
+  li.flash { outline: 2px solid var(--accent); outline-offset: -2px; transition: outline-color .4s; }
   li.shift { transition: transform .18s ease; will-change: transform; }
   body.rwDrag { -webkit-user-select: none; user-select: none; cursor: grabbing; }
   li.dragging .dragH { cursor: grabbing; color: var(--accent); }
@@ -568,7 +571,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.25.0';
+const VERSION = '1.26.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1893,6 +1896,7 @@ function renderBar() {
   if (ns) { const on = isSaved(ns.song); $('songHeart').classList.toggle('on', on); $('songHeart').title = on ? 'Thumbs up given (tap to take it back)' : 'Thumbs up: keep this song'; }
   drawClock();
   paintVol();
+  paintGo();
   if (bc) { bcRenderBar(cast, dev); return; }
   if (lastPlay && !here && !(cast && castActive())) { lastRenderBar(); return; }
   const st = current;
@@ -3118,6 +3122,34 @@ function toggleSaved(x) {
   if ($('songsDlg').open) drawSongs();
 }
 $('songHeart').addEventListener('click', () => toggleSaved(nowSong()));
+// Tap the song title (or the artist · album line) in the player: opens its Bandcamp album or SoundCloud list,
+// scrolled to the song. In the mini player a tap still just opens the full player.
+const goTrack = () => (bc && bcTrack()) || (!here && lastPlay && lastPlay.t) || null;
+const goable = t => !!(t && !t.ms && (t.sc ? scItems.some(x => 'sc:' + x.id === t.au) : t.au && /^https?:/.test(t.au)));
+function paintGo() { const on = goable(goTrack()); [els.npName, els.npSub].forEach(el => { el.classList.toggle('go', on); el.title = on ? 'Open its ' + (goTrack().sc ? 'SoundCloud list' : 'Bandcamp album') : ''; }); }
+async function goToSource(toSong) {
+  const t = goTrack();
+  if (!goable(t)) return;
+  let rows, idx = -1;
+  if (t.sc) {
+    const item = scItems.find(x => 'sc:' + x.id === t.au);
+    tab = 'sc'; safeSet('rw_tab', tab); setTabs(); scFilter = '';
+    await scOpenAlbum(item);
+    if (scAlbum && scAlbum.tracks) idx = scAlbum.tracks.findIndex(y => y.sc === t.sc);
+    rows = '[data-sct="' + idx + '"]';
+  } else {
+    const item = bcItems.find(x => x.url === t.au) || { url: t.au, title: t.album, artist: t.artist, art: t.art };
+    tab = 'bc'; safeSet('rw_tab', tab); setTabs();
+    await bcOpenAlbum(item);
+    if (bcAlbum && bcAlbum.tracks) idx = bcAlbum.tracks.findIndex(y => y.n === t.n && songKey(y.title) === songKey(t.title));
+    rows = '[data-t="' + idx + '"]';
+  }
+  const row = toSong && idx >= 0 && document.querySelector(rows);
+  if (row) { row.scrollIntoView({ block: 'center' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1800); }
+}
+const isMini = () => !!document.querySelector('header.top.mini');
+els.npName.addEventListener('click', e => { if (isMini() || !goable(goTrack())) return; e.stopPropagation(); goToSource(true); });
+els.npSub.addEventListener('click', e => { if (isMini() || !goable(goTrack())) return; e.stopPropagation(); goToSource(false); });
 function timeAgo(ms) {
   const min = Math.round((Date.now() - ms) / 60000);
   return min < 1 ? 'just now' : min < 60 ? min + ' min ago' : min < 1440 ? Math.floor(min / 60) + ' hr ago' : Math.floor(min / 1440) + ' d ago';
