@@ -566,7 +566,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.19.1';
+const VERSION = '1.20.0';
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
@@ -1041,10 +1041,65 @@ function toggleFav(st) {
   safeSet('rw_favs', JSON.stringify(favs)); autoSave('favs');
   render(); renderBar();
 }
-function addRecent(st) {
-  recent = [{ ...keep(st), at: Date.now() }, ...recent.filter(r => r.key !== st.key)].slice(0, 30);
-  unGone('recent', st.key);
+function addRecent(st) { addRecentEntry(keep(st)); }
+function addRecentEntry(x) {
+  recent = [{ ...x, at: Date.now() }, ...recent.filter(r => r.key !== x.key)].slice(0, 30);
+  unGone('recent', x.key);
   safeSet('rw_recent', JSON.stringify(recent)); autoSave('recent');
+}
+const recentStations = () => recent.filter(x => !x.m);
+// Music in Recent: the album / list / songs a Bandcamp, SoundCloud, Audius or Archive play started from,
+// a shuffle-all, or one of your playlists. Entries carry m: 'list' | 'shuf' | 'pl'.
+let recentAct = null;   // set just before a shuffle-all starts, so Recent shows "Shuffle …" instead of one random song
+function recentMusic(queue, i) {
+  const t = queue[i]; if (!t) return;
+  const act = recentAct; recentAct = null;
+  const src = trkSrc(t);
+  if (act) {
+    addRecentEntry({ m: 'shuf', key: 'm|shuf|' + act, act, name: act === 'sc' ? 'Shuffle my SoundCloud likes' : 'Shuffle my Bandcamp collection', sub: 'Shuffle', src, art: t.art || '' });
+    if (bc) bc.rkey = 'm|shuf|' + act;
+    return;
+  }
+  const one = queue.length === 1, albums = new Set(queue.map(x => x.album));
+  const name = one ? t.title : albums.size === 1 ? t.album : src + ' songs';
+  const key = 'm|' + src + '|' + (one ? (t.sc || t.ms || (t.au + '#' + t.n + '#' + t.title)) : (t.au || '') + '|' + name);
+  const from = queue.length > 100 ? i : 0;
+  addRecentEntry({
+    m: 'list', key, name, src, art: t.art || '',
+    sub: one ? [t.artist, t.album].filter(Boolean).join(' · ') : [albums.size === 1 ? t.artist : '', queue.length + ' songs'].filter(Boolean).join(' · '),
+    items: queue.slice(from, from + 100).map(bcItem), i: i - from,
+  });
+  if (bc) bc.rkey = key;
+}
+async function playRecentMusic(x) {
+  if (!x) return;
+  if (x.m === 'pl') { const pl = pls.find(p => p.id === x.plId); if (!pl) { showNotice('That playlist isn’t here any more.'); return; } playPlaylist(pl, 0, false); return; }
+  if (x.m === 'shuf') { if (x.act === 'sc') scShuffleAll(); else bcShuffleAll(); return; }
+  showNotice('Starting ' + x.name + '…');
+  const albums = new Map(), out = [];
+  let at = 0;
+  for (let k = 0; k < (x.items || []).length; k++) {
+    const it = x.items[k];
+    let t = null;
+    try {
+      if (it.sc || it.ms) t = await plResolve(it);
+      else {
+        if (!albums.has(it.au)) albums.set(it.au, await bcTracks({ url: it.au, title: it.album, artist: it.artist, art: it.art }).catch(() => []));
+        const tr = albums.get(it.au), want = songKey(it.title);
+        t = tr.find(y => y.url && songKey(y.title) === want && y.n === it.n) || tr.find(y => y.url && songKey(y.title) === want) || null;
+      }
+    } catch (e) {}
+    if (k === (x.i || 0)) at = out.length;
+    if (t) out.push(t);
+  }
+  if (!out.length) { showNotice('Couldn’t get those songs from ' + x.src + '. Try again.'); return; }
+  bcStart(out, Math.min(at, out.length - 1), false);
+}
+function recentMusicRow(x, ri) {
+  const now = x.m === 'pl' ? !!(plCtx && plCtx.id === x.plId) : !!(bc && !plCtx && bc.rkey === x.key);
+  return '<li class="st' + (now ? ' now' : '') + '" data-recm="' + ri + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(x.name) + '</div><div class="meta">' + esc(x.sub || ' ') + '</div>'
+    + '<div class="srcs"><span class="tag">' + esc(x.src || '') + '</span></div></div></li>';
 }
 
 // ── Showing it ──────────────────────────────────
@@ -1204,9 +1259,9 @@ function render() {
     h += favView();
   } else {
     const list = recent;
-    if (!list.length) h += '<div class="empty">Stations you play show up here.</div>';
+    if (!list.length) h += '<div class="empty">Stations, albums and playlists you play show up here.</div>';
     else h += '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="chip" id="recentClear">🗑️ Clear recent</button></div>';
-    h += '<ul class="list" style="margin-top:12px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+    h += '<ul class="list" style="margin-top:12px">' + list.map((st, ri) => { if (st.m) return recentMusicRow(st, ri); listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
   }
   els.main.innerHTML = h;
   requestAnimationFrame(() => els.main.querySelectorAll('.st.now .name').forEach(fitMq));
@@ -1241,6 +1296,8 @@ els.main.addEventListener('pointerdown', e => {
 });
 els.main.addEventListener('contextmenu', e => { const b = e.target.closest('[data-pick]'); if (!b) return; e.preventDefault(); if (!pickSel) { clearTimeout(pickTimer); pickStart(b.dataset.pick); } });
 els.main.addEventListener('click', e => {
+  const recM = tab === 'recent' && e.target.closest('[data-recm]');
+  if (recM) { playRecentMusic(recent[+recM.dataset.recm]); return; }
   if (e.target.id === 'pickCancel') { pickSel = null; render(); return; }
   if (e.target.id === 'pickAll') { pickSel = new Set(pickSel && pickSel.size === picks.length ? [] : picks.map(p => p.q)); render(); return; }
   if (e.target.id === 'pickRev') { pickRev = !pickRev; safeSet('rw_picksrev', pickRev ? 't' : ''); render(); return; }
@@ -1911,6 +1968,7 @@ function bcStart(queue, i, shuffle, fromPl) {
   stopHere();
   speakerStation = speakerLoading = null;
   bc = { queue, i, shuffle, where: castConnected() ? 'speaker' : 'here', state: 'starting' };
+  if (!fromPl) { recentMusic(queue, i); if (tab === 'recent') render(); }
   hideNotice();
   bcGo(0);
 }
@@ -1930,6 +1988,7 @@ async function bcRandomTrack() {
 async function bcShuffleAll() {
   const t = await bcRandomTrack();
   if (!t) { showNotice('Couldn’t get a song from Bandcamp. Try again.'); return; }
+  recentAct = 'bc';
   bcStart([t], 0, true);
 }
 // Shuffle all: the next random song is picked while this one plays, so there's no gap.
@@ -2311,6 +2370,7 @@ async function scRandomTrack() {
 async function scShuffleAll() {
   const t = await scRandomTrack();
   if (!t) { showNotice('No SoundCloud songs to shuffle yet.'); return; }
+  recentAct = 'sc';
   bcStart([t], 0, true);
   if (bc) bc.pick = scRandomTrack;
 }
@@ -2890,7 +2950,7 @@ $('songShare').addEventListener('click', () => {
 // favorites, recent). Bandcamp: songs in the album or shuffle. Playlists: their own order.
 let playCtx = null;   // { list: [stations], tab }
 function radioStep(d) {
-  const list = playCtx && playCtx.list && playCtx.list.length ? playCtx.list : (tab === 'favs' ? favs : tab === 'recent' ? recent : results);
+  const list = playCtx && playCtx.list && playCtx.list.length ? playCtx.list : (tab === 'favs' ? favs : tab === 'recent' ? recentStations() : results);
   if (!list.length) return;
   let i = current ? list.findIndex(x => x.key === current.key) : -1;
   i = i < 0 ? 0 : (i + d + list.length) % list.length;
@@ -2912,7 +2972,7 @@ function goShuffle() {
   if (MS[tab]) { msShuffle(tab); return; }
   if (tab === 'sc' || (bc && bcTrack() && bcTrack().sc)) { scShuffleAll(); return; }
   if (tab === 'bc' || bc) { bcShuffleAll(); return; }
-  const list = tab === 'favs' ? favs : tab === 'recent' ? recent : results.filter(s => s.check !== 'dead');
+  const list = tab === 'favs' ? favs : tab === 'recent' ? recentStations() : results.filter(s => s.check !== 'dead');
   if (!list.length) { showNotice('Search for stations first, then shuffle plays a random one.'); return; }
   playStation(list[Math.floor(Math.random() * list.length)], false, list);
 }
@@ -3176,6 +3236,10 @@ function playPlaylist(pl, from, shuffle) {
   if (shuffle) order = bcShuffle(order);
   else order = order.slice(from).concat(order.slice(0, from));
   plCtx = { id: pl.id, order, i: 0 };
+  const first = pl.items.find(it => it.k === 'bc' ? it.art : it.st && it.st.img);
+  addRecentEntry({ m: 'pl', key: 'm|pl|' + pl.id, plId: pl.id, name: pl.name, src: 'Playlist', art: first ? (first.k === 'bc' ? first.art : first.st.img) : '',
+    sub: pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') });
+  if (tab === 'recent') render();
   plGo();
 }
 async function plResolve(it) {
