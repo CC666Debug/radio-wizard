@@ -391,6 +391,23 @@
   .trk .add:hover, .st .add:hover { color: var(--accent); }
   .st .tagBtn { display: grid; place-items: center; padding: 2px 6px; }
   .st .tagBtn svg { width: 21px; height: 21px; }
+  .secPills { position: sticky; top: var(--topH, 0px); z-index: 4; background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 4px 6px; margin: 0 -4px 2px; }
+  .secPill { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: .9rem; cursor: pointer; white-space: nowrap;
+    touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform .15s ease, background .15s, border-color .15s; }
+  .secPill small { color: var(--muted); font-size: .75rem; margin-left: 2px; }
+  .secPill.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+  .secPill.lift { transition: none; z-index: 2; position: relative; box-shadow: 0 6px 18px rgba(0,0,0,.35); cursor: grabbing; }
+  .secPills.dragging .secPill:not(.lift) { pointer-events: none; }
+  .secPills { order: -1; }
+  .secPills:not([data-open~="songs"]) ~ [data-sec="songs"],
+  .secPills:not([data-open~="albums"]) ~ [data-sec="albums"],
+  .secPills:not([data-open~="lists"]) ~ [data-sec="lists"],
+  .secPills:not([data-open~="web"]) ~ [data-sec="web"] { display: none; }
+  .secPills ~ .songHits > h4:last-child:not(:first-child) { display: none; }
+  .secH h4 { margin: 14px 2px 0; color: var(--muted); font-size: .85rem; font-weight: 600; }
+  .secBox { display: flex; flex-direction: column; }
+  .secBox > [data-sec] { min-width: 0; }
+  .secHint { color: var(--muted); font-size: .85rem; margin: 4px 2px; list-style: none; }
   .songHits h4 { margin: 14px 2px 6px; color: var(--muted); font-size: .85rem; font-weight: 600; }
   .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 14px; }
   .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); }
@@ -575,7 +592,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.26.1';
+const VERSION = '1.27.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -596,7 +613,7 @@ window.addEventListener('keydown', e => { if (e.key === 'BrowserBack' || (e.altK
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
-const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev'];
+const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder'];
 let rwBooted = false, setTimer = 0;
 setTimeout(() => { rwBooted = true; }, 0);
 function setTouch(k) {
@@ -2063,12 +2080,14 @@ function bcListHtml() {
   const f = bcFilter.toLowerCase().trim();
   bcHits = f.length > 1 ? bcSongMatches(f) : [];
   const playing = bcTrack();
-  const songs = bcHits.length ? '<li class="songHits"><h4>Songs · ' + bcHits.length + (bcHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + bcHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.au === t.au && playing.n === t.n ? ' now' : '') + '" data-hit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist + ' · ' + t.album) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-adds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Albums</h4></li>' : '';
+  const songs = bcHits.length ? '<li class="songHits" data-sec="songs"' + secO('bc', 'songs') + '><h4>Songs · ' + bcHits.length + (bcHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + bcHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.au === t.au && playing.n === t.n ? ' now' : '') + '" data-hit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist + ' · ' + t.album) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-adds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Albums</h4></li>' : '';
   bcShown = f ? bcItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : bcItems;
   const cut = bcShown.slice(0, bcMore);
-  return songs + cut.map((x, i) => '<li class="st" data-bcalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+  if (!f) secPick.bc = null;   // a new search starts with every part closed
+  const bar = f ? secBar('bc', f, { songs: bcHits.length >= 200 ? '200+' : bcHits.length, albums: bcShown.length }) : '', oA = secO('bc', 'albums');
+  return bar + (bar ? '<li class="secH" data-sec="albums"' + oA + '><h4>Albums · ' + bcShown.length + '</h4></li>' : '') + songs + cut.map((x, i) => '<li class="st" data-sec="albums"' + oA + ' data-bcalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.artist) + (x.type === 't' ? ' · single track' : '') + '</div></div></li>').join('')
-    + (bcShown.length > bcMore ? '<li><button class="chip more" id="bcMoreBtn">Show more (' + (bcShown.length - bcMore) + ')</button></li>' : '')
+    + (bcShown.length > bcMore ? '<li data-sec="albums"' + oA + '><button class="chip more" id="bcMoreBtn">Show more (' + (bcShown.length - bcMore) + ')</button></li>' : '')
     + (!bcShown.length && !bcBusy ? '<li class="empty">Nothing matches.</li>' : '');
 }
 let bcMore = 150;
@@ -2563,14 +2582,17 @@ function scView() {
 function scListHtml() {
   const f = scFilter.toLowerCase().trim(), playing = bcTrack();
   scHits = f.length > 1 ? scSongs().filter(t => !t.off && (t.title + ' ' + t.artist).toLowerCase().includes(f)).filter((t, i, a) => a.findIndex(y => y.sc === t.sc) === i).slice(0, 200) : [];
-  const songs = scHits.length ? '<li class="songHits"><h4>Songs · ' + scHits.length + (scHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + scHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-schit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-scadds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Lists</h4></li>' : '';
+  const songs = scHits.length ? '<li class="songHits" data-sec="songs"' + secO('sc', 'songs') + '><h4>Songs · ' + scHits.length + (scHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + scHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-schit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-scadds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Lists</h4></li>' : '';
   scShown = f ? scItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : scItems;
   const busy = f && scIdxBusy ? '<li class="hint scIdxMsg" style="list-style:none">' + esc(scIdxBusy) + '</li>' : '';
   const web = f.length > 2 && scWeb.q.toLowerCase() === f ? (scWeb.busy ? '<li class="hint" style="list-style:none">Searching SoundCloud…</li>' : scWeb.list.length
-    ? '<li class="songHits"><h4>On SoundCloud · ' + scWeb.list.length + '</h4><ul class="list">' + scWeb.list.map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-scweb="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + (t.preview ? 'preview · ' : '') + bcTime(t.dur) + '</span><button class="add" data-scaddw="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul></li>' : '') : '';
-  return busy + songs + scShown.slice(0, scMore).map((x, i) => '<li class="st" data-scalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    ? '<li class="songHits" data-sec="web"' + secO('sc', 'web') + '><h4>On SoundCloud · ' + scWeb.list.length + '</h4><ul class="list">' + scWeb.list.map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-scweb="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + (t.preview ? 'preview · ' : '') + bcTime(t.dur) + '</span><button class="add" data-scaddw="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul></li>' : '') : '';
+  const webN = f.length > 2 && scWeb.q.toLowerCase() === f && !scWeb.busy ? scWeb.list.length : 0;
+  if (!f) secPick.sc = null;
+  const bar = f ? secBar('sc', f, { songs: scHits.length >= 200 ? '200+' : scHits.length, lists: scShown.length, web: webN }) : '', oL = secO('sc', 'lists');
+  return bar + (bar ? '<li class="secH" data-sec="lists"' + oL + '><h4>Your lists · ' + scShown.length + '</h4></li>' : '') + busy + songs + scShown.slice(0, scMore).map((x, i) => '<li class="st" data-sec="lists"' + oL + ' data-scalbum="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.kind === 'pl' ? x.artist + ' · ' + (x.album ? 'album' : 'playlist') : x.kind === 'likes' ? 'your likes' : 'your uploads') + ' · ' + x.count + ' song' + (x.count === 1 ? '' : 's') + '</div></div></li>').join('')
-    + (scShown.length > scMore ? '<li><button class="chip more" id="scMoreBtn">Show more (' + (scShown.length - scMore) + ')</button></li>' : '')
+    + (scShown.length > scMore ? '<li data-sec="lists"' + oL + '><button class="chip more" id="scMoreBtn">Show more (' + (scShown.length - scMore) + ')</button></li>' : '')
     + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">' + (scIdxBusy ? 'Nothing in your lists yet — still reading your playlists.' : 'Nothing in your lists matches.') + '</li>' : '')
     + web;
 }
@@ -2770,11 +2792,120 @@ function msView(id) {
   if (S.busy) h += '<div class="status">' + esc(S.busy) + '</div>';
   if (!S.q && !S.busy) h += '<div class="hint" style="margin-top:10px">' + esc(M.about) + '</div><div class="chips" style="margin:10px 0">' + PICKS.map(p => '<button class="chip" data-mspick="' + esc(p) + '">' + esc(p) + '</button>').join('') + '</div>';
   if (!S.busy && S.q && !S.songs.length && !S.lists.length) h += '<div class="empty">Nothing found. Try other words.</div>';
-  if (S.songs.length) h += '<div class="bcHead"><div class="who"><b>' + esc(S.q ? 'Songs' : S.title) + '</b> · ' + S.songs.length + '</div><button class="btn main" id="msShufSongs">🔀 Shuffle</button></div><ul class="list">' + S.songs.map((t, i) => msSongRow(t, i, 'data-mshit')).join('') + '</ul>';
-  if (S.lists.length) h += (S.songs.length ? '<div class="catHead">' + (id === 'au' ? 'Artists and playlists' : 'Lists') + '</div>' : '<div class="status">' + S.lists.length + ' result' + (S.lists.length === 1 ? '' : 's') + '</div>')
-    + '<ul class="list">' + S.lists.map((x, i) => '<li class="st" data-mslist="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.meta || '') + '</div></div></li>').join('') + '</ul>';
-  return h;
+  h += '<div class="secBox">';
+  if (S.q && !S.busy) h += secBar('' + id, S.q.toLowerCase(), { songs: S.songs.length, lists: S.lists.length }, 'div');
+  if (S.songs.length) h += '<div data-sec="songs"' + secO(id, 'songs') + '><div class="bcHead"><div class="who"><b>' + esc(S.q ? 'Songs' : S.title) + '</b> · ' + S.songs.length + '</div><button class="btn main" id="msShufSongs">🔀 Shuffle</button></div><ul class="list">' + S.songs.map((t, i) => msSongRow(t, i, 'data-mshit')).join('') + '</ul></div>';
+  if (S.lists.length) h += '<div data-sec="lists"' + secO(id, 'lists') + '>' + (S.songs.length ? '<div class="catHead">' + (id === 'au' ? 'Artists and playlists' : 'Lists') + '</div>' : '<div class="status">' + S.lists.length + ' result' + (S.lists.length === 1 ? '' : 's') + '</div>')
+    + '<ul class="list">' + S.lists.map((x, i) => '<li class="st" data-mslist="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div class="body"><div class="name">' + esc(x.title) + '</div><div class="meta">' + esc(x.meta || '') + '</div></div></li>').join('') + '</ul></div>';
+  return h + '</div>';
 }
+// Search sections as pills (Songs, Albums, Lists, On SoundCloud…) with their counts. Every search starts with all of
+// them closed; tap a pill to open its part, tap again to close it (several can be open). Drag a pill to move it (on
+// touch: hold it a moment first). Open parts follow the pill order; the order is kept per service and follows you in
+// the Settings backup.
+const SEC_DEF = { bc: ['songs', 'albums'], sc: ['songs', 'lists', 'web'], au: ['songs', 'lists'], ia: ['songs', 'lists'] };
+const SEC_NAME = { songs: 'Songs', albums: 'Albums', lists: 'Lists', web: 'On SoundCloud' };
+const secPick = {};   // svc -> {q, open: [keys]} for the search on screen (Bandcamp/SoundCloud: until the filter is cleared)
+const secLive = svc => svc === 'bc' || svc === 'sc';   // filter-as-you-type: keep what's open while typing
+function secO(svc, k) { return ' style="order:' + (secOrder(svc).indexOf(k) + 1) + '"'; }
+function secOrder(svc) {
+  const o = readJSON('rw_secorder', {}), d = SEC_DEF[svc] || [];
+  const s = o && Array.isArray(o[svc]) ? o[svc].filter((k, i, a) => d.includes(k) && a.indexOf(k) === i) : [];
+  return s.concat(d.filter(k => !s.includes(k)));
+}
+function secBar(svc, q, counts, tag) {
+  const have = secOrder(svc).filter(k => parseInt(counts[k], 10) > 0);
+  if (have.length < 2) return '';
+  const p = secPick[svc];
+  if (!p || (!secLive(svc) && p.q !== q)) secPick[svc] = { q, open: [] };
+  const open = secPick[svc].open;
+  const t = tag || 'li';
+  return '<' + t + ' class="secPills" data-svc="' + svc + '" data-open="' + open.join(' ') + '">' + have.map(k => '<button type="button" class="secPill' + (open.includes(k) ? ' on' : '') + '" aria-pressed="' + open.includes(k) + '" data-seck="' + k + '">'
+    + esc(svc === 'au' && k === 'lists' ? 'Artists & playlists' : SEC_NAME[k]) + ' <small>' + esc(String(counts[k])) + '</small></button>').join('') + '</' + t + '>';
+}
+function secRedraw(svc) {
+  if (svc === 'bc' && $('bcList')) { $('bcList').innerHTML = bcListHtml(); bcWire(); }
+  else if (svc === 'sc' && $('scList')) { $('scList').innerHTML = scListHtml(); scWire(); }
+  else render();
+}
+let secDrag = null, secNoClick = 0;
+function secDragStart() {
+  const d = secDrag; if (!d || d.on) return;
+  d.pills = [...d.bar.querySelectorAll('.secPill')];
+  d.rects = d.pills.map(x => x.getBoundingClientRect());
+  d.from = d.pills.indexOf(d.b); d.to = d.from; d.on = true;
+  try { d.b.setPointerCapture(d.id); } catch (e) {}
+  d.b.classList.add('lift'); d.bar.classList.add('dragging');
+  rwDragging = true;
+  try { if (d.touch && navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+}
+function secDragEnd(drop) {
+  const d = secDrag; secDrag = null; if (!d) return;
+  clearTimeout(d.timer);
+  if (!d.on) return;
+  rwDragging = false; secNoClick = Date.now();
+  d.pills.forEach(x => { x.style.transform = ''; });
+  d.b.classList.remove('lift'); d.bar.classList.remove('dragging');
+  if (!drop || d.to === d.from) return;
+  const vis = d.pills.map(x => x.dataset.seck), k = vis.splice(d.from, 1)[0];
+  vis.splice(d.to, 0, k);
+  const svc = d.bar.dataset.svc, full = secOrder(svc), slots = full.map((x, i) => vis.includes(x) ? i : -1).filter(i => i >= 0);
+  slots.forEach((slot, j) => { full[slot] = vis[j]; });
+  const o = readJSON('rw_secorder', {}) || {}; o[svc] = full;
+  safeSet('rw_secorder', JSON.stringify(o));
+  secRedraw(svc);
+}
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest && e.target.closest('.secPill');
+  if (!b || e.button > 0 || secDrag) return;
+  secDrag = { b, bar: b.parentElement, id: e.pointerId, x0: e.clientX, y0: e.clientY, on: false, touch: e.pointerType !== 'mouse', timer: 0 };
+  if (secDrag.touch) secDrag.timer = setTimeout(secDragStart, 400);
+}, true);
+document.addEventListener('pointermove', e => {
+  const d = secDrag; if (!d || e.pointerId !== d.id) return;
+  const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+  if (!d.on) {
+    if (d.touch) { if (Math.abs(dx) > 8 || Math.abs(dy) > 8) secDragEnd(false); return; }   // moved before the hold: a scroll
+    if (Math.abs(dx) < 6) return;
+    secDragStart();
+  }
+  e.preventDefault();
+  d.b.style.transform = 'translateX(' + dx + 'px) scale(1.06)';
+  const r0 = d.rects[d.from], mid = r0.left + r0.width / 2 + dx;
+  let to = 0;
+  d.rects.forEach((r, i) => { if (i !== d.from && mid > r.left + r.width / 2) to++; });
+  d.to = to;
+  const step = r0.width + 8;
+  d.pills.forEach((x, i) => {
+    if (i === d.from) return;
+    const sh = d.from < to && i > d.from && i <= to ? -step : d.from > to && i >= to && i < d.from ? step : 0;
+    x.style.transform = sh ? 'translateX(' + sh + 'px)' : '';
+  });
+}, true);
+document.addEventListener('pointerup', e => { if (secDrag && e.pointerId === secDrag.id) secDragEnd(true); }, true);
+document.addEventListener('pointercancel', e => { if (secDrag && e.pointerId === secDrag.id) secDragEnd(false); }, true);
+document.addEventListener('touchmove', e => { if (secDrag && secDrag.on) e.preventDefault(); }, { passive: false });
+document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('.secPill')) e.preventDefault(); }, true);
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.secPill');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (Date.now() - secNoClick < 350) return;
+  const bar = b.parentElement, svc = bar.dataset.svc, k = b.dataset.seck, p = secPick[svc];
+  if (!p) return;
+  const topH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH')) || 0;
+  const opening = !p.open.includes(k);
+  p.open = opening ? p.open.concat(k) : p.open.filter(x => x !== k);
+  secRedraw(svc);
+  if (opening) {   // the part just opened is below the fold: bring its top up under the pills
+    const nb = document.querySelector('.secPills[data-svc="' + svc + '"]');
+    const first = nb && [...nb.parentElement.children].find(x => x.dataset.sec === k && x.getClientRects().length);
+    if (first) {
+      const y = first.getBoundingClientRect().top, under = topH + nb.offsetHeight + 4;
+      if (y > window.innerHeight - 80 || y < under) window.scrollTo(0, Math.max(0, y + window.scrollY - under));
+    }
+  }
+}, true);
 function msWire(id) {
   const S = msState[id], on = (k, fn) => { const el = $(k); if (el) el.onclick = fn; };
   const f = $('msForm');
@@ -3888,7 +4019,7 @@ function unGarble(x) {
     },
   };
   // Settings: the newest change of each one wins (volume stays per device).
-  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed' };
+  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order' };
   const setAt = () => readJSON('rw_set_at', {});
   K.settings = {
     file: 'settings', what: 'settings', count: () => Object.keys(setAt()).length,
