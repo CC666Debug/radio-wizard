@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.29.0';
+const VERSION = '1.29.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2668,10 +2668,23 @@ function scPlayAlbum(album, from) {
   if (from === -1) bcStart(bcShuffle(ok.slice()), 0, false);
   else { const t = album.tracks[from]; bcStart(ok, Math.max(0, ok.indexOf(t)), false); }
 }
+// Shuffle plays every song once before any comes back (pure random kept repeating small lists like 4 likes).
+const shufDone = new Set();
+function shufPick(pool, id) {
+  if (!pool.length) return null;
+  let left = pool.filter(t => !shufDone.has(id(t)));
+  if (!left.length) { pool.forEach(t => shufDone.delete(id(t))); left = pool; }
+  const cur = bc && bcTrack(), cid = cur && id(cur);
+  if (left.length > 1 && cid) left = left.filter(t => id(t) !== cid);   // never the same song twice in a row
+  const t = left[Math.floor(Math.random() * left.length)];
+  shufDone.add(id(t));
+  return t;
+}
 async function scRandomTrack() {
   const likes = scItems.find(x => x.kind === 'likes');
   const pool = (likes ? likes.tracks : scSongs()).filter(scPlayable);
-  return pool.length ? Object.assign({}, pool[Math.floor(Math.random() * pool.length)]) : null;
+  const t = shufPick(pool, x => 'sc' + x.sc);
+  return t ? Object.assign({}, t) : null;
 }
 async function scShuffleAll() {
   const t = await scRandomTrack();
