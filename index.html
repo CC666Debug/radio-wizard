@@ -381,6 +381,9 @@
   li.song .sLinks a { color: var(--accent-2); }
   .favHead { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
   .favHead .who { flex: 1; color: var(--muted); font-size: .9rem; }
+  .findRow { display: flex; gap: 8px; align-items: center; }
+  .findRow .clearWrap { flex: 1; min-width: 0; }
+  .findRow select.sortSel { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .88rem; max-width: 150px; }
   .favHead select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .88rem; }
   .catHead { margin: 16px 2px 6px; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
   .catHead small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
@@ -592,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.27.1';
+const VERSION = '1.28.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -613,7 +616,7 @@ window.addEventListener('keydown', e => { if (e.key === 'BrowserBack' || (e.altK
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
-const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder'];
+const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort'];
 let rwBooted = false, setTimer = 0;
 setTimeout(() => { rwBooted = true; }, 0);
 function setTouch(k) {
@@ -2340,6 +2343,7 @@ $('bcDlg').addEventListener('click', e => { if (e.target === $('bcDlg')) $('bcDl
 // so each song gets a fresh one when it starts.
 let scUser = safeGet('rw_sc_user') || '';
 let scItems = readJSON('rw_sc_items', []);   // [{ id, title, artist, art, kind: 'likes'|'uploads'|'pl', pid, count, tracks? }]
+let scSort = safeGet('rw_scsort') || 'new', scPlayed = readJSON('rw_sc_played', {}), scNeedAt = true;
 let scBusy = '', scFilter = '', scAlbum = null, scShown = [], scHits = [], scMore = 150;
 let scCid = safeGet('rw_sc_cid') || '';
 let scSignedIn = safeGet('rw_sc_in') === 't';
@@ -2421,12 +2425,12 @@ async function scLoad() {
     if (missed.length === 3) throw new Error('SoundCloud didn’t answer. Try again in a moment.');
     const likedT = likes.filter(x => x.track).map((x, i) => scTrack(x.track, i + 1, 'Liked songs', 'sc:likes'));
     const upT = ups.map((t, i) => scTrack(t, i + 1, 'Uploads', 'sc:uploads'));
-    const pl = p => ({ id: 'p' + p.id, pid: p.id, title: p.title, artist: p.user && p.user.username || '', art: scArt(p, p.user) || (p.tracks && p.tracks[0] && scArt(p.tracks[0], p.user)), kind: 'pl', count: p.track_count || 0, album: p.is_album });
+    const pl = (p, at) => ({ at: Date.parse(at || p.created_at) || 0, id: 'p' + p.id, pid: p.id, title: p.title, artist: p.user && p.user.username || '', art: scArt(p, p.user) || (p.tracks && p.tracks[0] && scArt(p.tracks[0], p.user)), kind: 'pl', count: p.track_count || 0, album: p.is_album });
     const items = [];
     if (likedT.length) items.push({ id: 'likes', title: 'Liked songs', artist: u.username, art: (likedT[0] && likedT[0].art) || scArt(null, u), kind: 'likes', count: likedT.length, tracks: likedT });
     if (upT.length) items.push({ id: 'uploads', title: 'Uploads', artist: u.username, art: scArt(null, u), kind: 'uploads', count: upT.length, tracks: upT });
-    mine.forEach(p => items.push(pl(p)));
-    likes.filter(x => x.playlist).forEach(x => items.push(pl(x.playlist)));
+    mine.forEach(p => items.push(pl(p, p.created_at)));
+    likes.filter(x => x.playlist).forEach(x => items.push(pl(x.playlist, x.created_at)));   // liked lists: when you liked them
     if (missed.length) items.push(...scItems);   // keep what loaded last time for the parts that failed
     scItems = items.filter((x, i) => items.findIndex(y => y.id === x.id) === i);
     safeSet('rw_sc_items', JSON.stringify(scItems));
@@ -2573,8 +2577,8 @@ function scView() {
   }
   h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scCount()) + '</div>'
     + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
-  h += '<div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
-    + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>';
+  h += '<div class="findRow"><div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
+    + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>' + '<select id="scSort" class="sortSel" aria-label="Order of your lists" title="Order of your lists">' + SC_SORTS.map(([v, n]) => '<option value="' + v + '"' + (v === scSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>' + '</div>';
   h += '<ul class="list" id="scList" style="margin-top:10px">' + scListHtml() + '</ul>';
   if (!scIdxRun && (!scIdx || !scIdx.at)) setTimeout(scIndex, 1500);
   return h;
@@ -2583,7 +2587,8 @@ function scListHtml() {
   const f = scFilter.toLowerCase().trim(), playing = bcTrack();
   scHits = f.length > 1 ? scSongs().filter(t => !t.off && (t.title + ' ' + t.artist).toLowerCase().includes(f)).filter((t, i, a) => a.findIndex(y => y.sc === t.sc) === i).slice(0, 200) : [];
   const songs = scHits.length ? '<li class="songHits" data-sec="songs"' + secO('sc', 'songs') + '><h4>Songs · ' + scHits.length + (scHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + scHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-schit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-scadds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Lists</h4></li>' : '';
-  scShown = f ? scItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : scItems;
+  const all = scSorted();
+  scShown = f ? all.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : all;
   const busy = f && scIdxBusy ? '<li class="hint scIdxMsg" style="list-style:none">' + esc(scIdxBusy) + '</li>' : '';
   const web = f.length > 2 && scWeb.q.toLowerCase() === f ? (scWeb.busy ? '<li class="hint" style="list-style:none">Searching SoundCloud…</li>' : scWeb.list.length
     ? '<li class="songHits" data-sec="web"' + secO('sc', 'web') + '><h4>On SoundCloud · ' + scWeb.list.length + '</h4><ul class="list">' + scWeb.list.map((t, i) => '<li class="trk' + (playing && playing.sc === t.sc ? ' now' : '') + '" data-scweb="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist) + '</small></span><span class="d">' + (t.preview ? 'preview · ' : '') + bcTime(t.dur) + '</span><button class="add" data-scaddw="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul></li>' : '') : '';
@@ -2596,7 +2601,24 @@ function scListHtml() {
     + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">' + (scIdxBusy ? 'Nothing in your lists yet — still reading your playlists.' : 'Nothing in your lists matches.') + '</li>' : '')
     + web;
 }
+// Your lists in the order picked in the menu (Liked songs and Uploads stay on top).
+const SC_SORTS = [['new', 'Newest first'], ['old', 'Oldest first'], ['az', 'A → Z'], ['za', 'Z → A'], ['played', 'Recently played']];
+function scSorted() {
+  const top = scItems.filter(x => x.kind !== 'pl'), pl = scItems.filter(x => x.kind === 'pl');
+  const az = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
+  const by = { new: (a, b) => (b.at || 0) - (a.at || 0), old: (a, b) => (a.at || 0) - (b.at || 0), az, za: (a, b) => az(b, a),
+    played: (a, b) => (scPlayed[b.id] || 0) - (scPlayed[a.id] || 0) || (b.at || 0) - (a.at || 0) }[scSort] || null;
+  return top.concat(by ? pl.slice().sort(by) : pl);
+}
+function scMarkPlayed(id) { if (!id) return; scPlayed[id] = Date.now(); safeSet('rw_sc_played', JSON.stringify(scPlayed)); }
 function scWire() {
+  const so = $('scSort');
+  if (so) so.onchange = () => {
+    scSort = so.value; safeSet('rw_scsort', scSort); scMore = 150;
+    // lists saved before 1.28 don't know their dates yet: fetch them once
+    if ((scSort === 'new' || scSort === 'old') && scNeedAt && scItems.some(x => x.kind === 'pl' && x.at == null)) { scNeedAt = false; scLoad(); }
+    $('scList').innerHTML = scListHtml(); scWire();
+  };
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
   on('scGo', () => { const n = ($('scName') ? $('scName').value || '' : '').trim().replace(/^.*soundcloud\.com\//i, '').replace(/[/?#].*$/, ''); if (!n && !scSignedIn) return; scUser = n || scUser; safeSet('rw_sc_user', scUser); scLoad(); });
   on('scLogin', () => { if (SC_LOGIN()) window.AndroidCast.soundcloudLogin(); });
@@ -2620,6 +2642,7 @@ async function scOpenAlbum(item) {
 }
 function scPlayAlbum(album, from) {
   if (!album || !album.tracks) return;
+  scMarkPlayed(album.id);
   const ok = album.tracks.filter(scPlayable);
   if (from === -1) bcStart(bcShuffle(ok.slice()), 0, false);
   else { const t = album.tracks[from]; bcStart(ok, Math.max(0, ok.indexOf(t)), false); }
@@ -4019,7 +4042,7 @@ function unGarble(x) {
     },
   };
   // Settings: the newest change of each one wins (volume stays per device).
-  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order' };
+  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order', rw_scsort: 'SoundCloud lists order' };
   const setAt = () => readJSON('rw_set_at', {});
   K.settings = {
     file: 'settings', what: 'settings', count: () => Object.keys(setAt()).length,
@@ -4046,6 +4069,7 @@ function unGarble(x) {
       favSort = safeGet('rw_favsort') || 'cat';
       timeStyle = (parseInt(safeGet('rw_time'), 10) || 0) % TIME_STYLES.length; try { drawClock(); } catch (e) {}
       pickSort = safeGet('rw_picksort') || 'new'; pickRev = safeGet('rw_picksrev') === 't';
+      scSort = safeGet('rw_scsort') || 'new';
       render();
       return n;
     },
