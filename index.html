@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.30.0';
+const VERSION = '1.30.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2264,7 +2264,7 @@ function bcLoadSpeaker(pos, seek) {
 }
 // Keeps the speaker's queue a few songs ahead (SoundCloud links run out, so only songs that will start before
 // their link does are sent; the rest follow whenever RW gets to run again).
-const QUEUE_AHEAD = 6;
+const QUEUE_AHEAD = 50;   // SoundCloud links (and the song pieces inside) last ~2 h from fetching, so SC fills about 2 h ahead; Bandcamp ~1 day
 const spkArgs = t => ({ url: t.url, contentType: t.mime || 'audio/mpeg', streamType: 'BUFFERED', title: t.title, subtitle: t.artist + (t.album ? ' · ' + t.album : ''), image: t.art || new URL('icon-512.png', location.href).href });
 async function bcQueueFill() {
   const b = bc, session = ctx && ctx.getCurrentSession();
