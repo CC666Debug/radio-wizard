@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.29.1';
+const VERSION = '1.30.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1638,7 +1638,7 @@ window.__onGCastApiAvailable = function (available) {
   ctx.setOptions({ receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID, autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED, resumeSavedSession: true });
   player = new cast.framework.RemotePlayer();
   ctrl = new cast.framework.RemotePlayerController(player);
-  ctrl.addEventListener(cast.framework.RemotePlayerEventType.ANY_CHANGE, () => { onSpeakerState(); renderBar(); });
+  ctrl.addEventListener(cast.framework.RemotePlayerEventType.ANY_CHANGE, () => { bcQueueSync(); onSpeakerState(); renderBar(); });
   ctx.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, e => { diag('cast state: ' + e.castState); renderBar(); });
   ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, e => {
     const S = cast.framework.SessionState;
@@ -2245,19 +2245,76 @@ function bcLoadSpeaker(pos, seek) {
   const req = new chrome.cast.media.LoadRequest(info);
   req.autoplay = !(seek && seek.paused);
   if (pos) req.currentTime = pos;
+  // Songs go to the speaker as a queue that RW keeps a few songs ahead: the speaker moves on by itself,
+  // so it keeps playing while the phone sleeps (like radio in the casters, nothing on the phone has to run).
+  const q = !!session.canQueue && !plCtx;
+  req.queue = q;
+  bc.queued = q ? null : undefined;
   bc.sent = t.url;
   safeSet('rw_cast_m', JSON.stringify({ url: t.url, at: Date.now() - (pos || 0) * 1000 }));   // so a reopened RW knows the speaker is playing this song
+  const b = bc;
   session.loadMedia(req).then(() => {
     diag('speaker accepted the song');
+    if (q && bc === b && b.sent === t.url) { b.queued = b.i; bcQueueFill(); }
     // A jump while paused: the phone / Windows apps always start playing what they send, so pause it again.
     const m = seek && seek.paused && session.getMediaSession && session.getMediaSession();
     if (m) m.pause(new chrome.cast.media.PauseRequest(), () => {}, () => {});
   }).catch(err => { diag('speaker REFUSED the song · ' + err); if (bc && bc.sent === t.url) bcNext(); });
   renderBar();
 }
+// Keeps the speaker's queue a few songs ahead (SoundCloud links run out, so only songs that will start before
+// their link does are sent; the rest follow whenever RW gets to run again).
+const QUEUE_AHEAD = 6;
+const spkArgs = t => ({ url: t.url, contentType: t.mime || 'audio/mpeg', streamType: 'BUFFERED', title: t.title, subtitle: t.artist + (t.album ? ' · ' + t.album : ''), image: t.art || new URL('icon-512.png', location.href).href });
+async function bcQueueFill() {
+  const b = bc, session = ctx && ctx.getCurrentSession();
+  if (!b || b.where !== 'speaker' || b.queued == null || b.filling || !session || !session.queueAdd) return;
+  b.filling = true;
+  try {
+    while (bc === b && b.queued - b.i < QUEUE_AHEAD) {
+      const j = b.queued + 1;
+      if (j >= b.queue.length) {
+        if (!b.shuffle) break;
+        const n = await (b.pick || bcRandomTrack)().catch(() => null);
+        if (bc !== b || !n) break;
+        b.queue.push(n);
+      }
+      const t = b.queue[j];
+      if (t.sc && !(t.url && t.exp - Date.now() > 300e3)) {
+        try { await scResolve(t); } catch (e) { diag('queue: no link for ' + t.title + ', left out'); b.queue.splice(j, 1); continue; }
+        if (bc !== b) break;
+      }
+      if (!t.url) { b.queue.splice(j, 1); continue; }
+      // when it would start: the rest of this song plus the ones queued before it
+      let wait = Math.max(0, (bcTrack() && bcTrack().dur || 0) - (bcClock.start && !bcClock.paused ? (performance.now() - bcClock.start) / 1000 : bcClock.pos));
+      for (let k = b.i + 1; k < j; k++) wait += b.queue[k].dur || 240;
+      if (t.exp && Date.now() + wait * 1000 > t.exp - 120e3) break;   // its link would run out first: add it later
+      await session.queueAdd([spkArgs(t)]);
+      if (bc !== b) break;
+      b.queued = j;
+      diag('queue: ' + t.title + ' added (' + (j - b.i) + ' ahead)');
+    }
+  } catch (e) { diag('queue FAILED: ' + e); }
+  b.filling = false;
+}
+// The speaker went on to the next song in its queue by itself: follow it.
+function bcQueueSync() {
+  if (!bc || bc.where !== 'speaker' || bc.queued == null || !player || !player.mediaInfo) return;
+  const cid = player.mediaInfo.contentId;
+  if (!cid || cid === bc.sent) return;
+  const k = bc.queue.findIndex((x, n) => n > bc.i && n <= bc.queued && x.url === cid);
+  if (k < 0) return;
+  bc.i = k; bc.sent = cid; bc.state = 'playing';
+  safeSet('rw_cast_m', JSON.stringify({ url: cid, at: Date.now() }));
+  bcClock.start = performance.now(); bcClock.pos = 0; bcClock.paused = false;
+  diag('speaker moved on to ' + bcTrack().title);
+  bcHeard(); saveLast(); renderBar();
+  if ((tab === 'bc' && bcAlbum) || (tab === 'sc' && scAlbum)) render();
+  bcQueueFill();
+}
 function bcSpeakerState(media) {
   const PS = chrome.cast.media.PlayerState, IR = chrome.cast.media.IdleReason;
-  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); return; }
+  if (player.playerState === PS.PLAYING) { bc.state = 'playing'; bcClockPlaying(); bcHeard(); bcPrefetch(); bcQueueFill(); return; }
   if (player.playerState === PS.PAUSED) { bc.state = 'paused'; bcClockPause(); return; }
   if (player.playerState !== PS.IDLE || bc.state === 'starting' && !(media && media.idleReason)) return;
   const why = media && media.idleReason;
@@ -4344,7 +4401,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 render(); renderBar();
 const cs = document.createElement('script');
 // Inside the Android app, casting goes through Android's own Google Cast service instead.
-cs.src = window.AndroidCast ? 'android-cast.js' : 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+cs.src = window.AndroidCast ? 'android-cast.js?v=' + VERSION : 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
 cs.onerror = () => { diag('cast library failed to load'); els.castLabel.textContent = 'No cast'; };
 document.head.appendChild(cs);
 </script>

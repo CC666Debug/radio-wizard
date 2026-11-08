@@ -421,6 +421,7 @@ struct Status {
 
 enum Cmd {
     Load(Value, mpsc::Sender<Result<(), String>>),
+    QueueAdd(Vec<Value>, mpsc::Sender<Result<(), String>>),
     Media(String),
     Volume(Option<f64>, Option<bool>),
     End(bool),
@@ -434,6 +435,18 @@ struct Cast {
 struct AppState {
     devices: Devices,
     cast: Mutex<Cast>,
+}
+
+fn media_of(a: &Value) -> Value {
+    let mut media = json!({
+        "contentId": a["url"], "contentType": a["contentType"].as_str().unwrap_or("audio/mpeg"),
+        "streamType": if a["streamType"].as_str() == Some("BUFFERED") { "BUFFERED" } else { "LIVE" },
+        "metadata": { "metadataType": 0, "title": a["title"], "subtitle": a["subtitle"] },
+    });
+    if let Some(img) = a["image"].as_str().filter(|s| !s.is_empty()) {
+        media["metadata"]["images"] = json!([{ "url": img }]);
+    }
+    media
 }
 
 fn cast_thread(dev: Device, rx: mpsc::Receiver<Cmd>, status: Arc<Mutex<Status>>, ready: mpsc::Sender<Result<(), String>>) {
@@ -500,6 +513,19 @@ fn cast_thread(dev: Device, rx: mpsc::Receiver<Cmd>, status: Arc<Mutex<Status>>,
         loop {
             match rx.try_recv() {
                 Ok(Cmd::Load(a, reply)) => queued_load = Some((a, reply)),
+                Ok(Cmd::QueueAdd(items, reply)) => {
+                    // more songs at the end of the speaker's queue (it moves on to them by itself)
+                    match (&transport, media_sid) {
+                        (Some(t), Some(id)) => {
+                            let items: Vec<Value> = items.iter().map(|a| json!({ "media": media_of(a), "autoplay": true, "preloadTime": 15 })).collect();
+                            let r = send(&mut s, t, NS_MEDIA, json!({ "type": "QUEUE_INSERT", "mediaSessionId": id, "items": items })).map(|_| ()).map_err(err);
+                            let _ = reply.send(r);
+                        }
+                        _ => {
+                            let _ = reply.send(Err("nothing playing".into()));
+                        }
+                    }
+                }
                 Ok(Cmd::Media(what)) => {
                     if let (Some(t), Some(id)) = (&transport, media_sid) {
                         let _ = send(&mut s, t, NS_MEDIA, json!({ "type": what, "mediaSessionId": id }));
@@ -537,15 +563,13 @@ fn cast_thread(dev: Device, rx: mpsc::Receiver<Cmd>, status: Arc<Mutex<Status>>,
         if transport.is_some() && queued_load.is_some() {
             let t = transport.clone().unwrap();
             let (a, reply) = queued_load.take().unwrap();
-            let mut media = json!({
-                "contentId": a["url"], "contentType": a["contentType"].as_str().unwrap_or("audio/mpeg"),
-                "streamType": if a["streamType"].as_str() == Some("BUFFERED") { "BUFFERED" } else { "LIVE" },
-                "metadata": { "metadataType": 0, "title": a["title"], "subtitle": a["subtitle"] },
-            });
-            if let Some(img) = a["image"].as_str().filter(|s| !s.is_empty()) {
-                media["metadata"]["images"] = json!([{ "url": img }]);
-            }
-            let mut msg = json!({ "type": "LOAD", "media": media, "autoplay": true, "sessionId": session });
+            let media = media_of(&a);
+            // Songs go in a speaker queue, so later ones can be added and the speaker moves on by itself.
+            let mut msg = if a["queue"].as_bool() == Some(true) {
+                json!({ "type": "QUEUE_LOAD", "items": [{ "media": media, "autoplay": true, "preloadTime": 15 }], "startIndex": 0, "repeatMode": "REPEAT_OFF", "sessionId": session })
+            } else {
+                json!({ "type": "LOAD", "media": media, "autoplay": true, "sessionId": session })
+            };
             if let Some(ct) = a["currentTime"].as_f64().filter(|t| *t > 0.0) {
                 msg["currentTime"] = json!(ct);
             }
@@ -752,6 +776,17 @@ async fn cast_load(state: tauri::State<'_, AppState>, args: String) -> Result<()
 }
 
 #[tauri::command]
+async fn cast_queue_add(state: tauri::State<'_, AppState>, args: String) -> Result<(), String> {
+    let a: Value = serde_json::from_str(&args).map_err(err)?;
+    let items = a["items"].as_array().cloned().unwrap_or_default();
+    let (tx, rx) = mpsc::channel();
+    send_cmd(&state, Cmd::QueueAdd(items, tx))?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(15)).unwrap_or(Err("timed out".into())))
+        .await
+        .map_err(err)?
+}
+
+#[tauri::command]
 fn cast_media(state: tauri::State<AppState>, what: String) -> Result<(), String> {
     if !["PAUSE", "PLAY", "STOP"].contains(&what.as_str()) {
         return Err("unknown".into());
@@ -781,7 +816,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_media, cast_volume, cast_end
+            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_queue_add, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

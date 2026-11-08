@@ -108,6 +108,7 @@
     ready() { startPolling(); },
     pickSpeaker(id) { openPicker(id); },
     load(id, args) { result(id, inv('cast_load', { args })); },
+    queueAdd(id, args) { result(id, inv('cast_queue_add', { args })); },
     pause(id) { result(id, inv('cast_media', { what: 'PAUSE' })); },
     play(id) { result(id, inv('cast_media', { what: 'PLAY' })); },
     stop(id) { result(id, inv('cast_media', { what: 'STOP' })); },

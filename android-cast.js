@@ -48,7 +48,10 @@
     getCastDevice: () => ({ friendlyName: state.device || 'speaker' }),
     getMediaSession: () => (state.media ? mediaSession : null),
     getSessionState: () => (state.device ? SessionState.SESSION_STARTED : SessionState.NO_SESSION),
+    canQueue: !!bridge.queueAdd,   // app versions that can hand the speaker a queue of songs
+    queueAdd: items => call('queueAdd', { items }),
     loadMedia: req => call('load', {
+      queue: !!(req.queue && bridge.queueAdd),
       url: req.media.contentId, contentType: req.media.contentType,
       streamType: req.media.streamType || 'LIVE', currentTime: req.currentTime || 0,
       title: req.media.metadata && req.media.metadata.title || '',
