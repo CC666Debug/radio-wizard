@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.28.1';
+const VERSION = '1.29.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -616,7 +616,7 @@ window.addEventListener('keydown', e => { if (e.key === 'BrowserBack' || (e.altK
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
-const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort'];
+const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort', 'rw_bcsort'];
 let rwBooted = false, setTimer = 0;
 setTimeout(() => { rwBooted = true; }, 0);
 function setTouch(k) {
@@ -1981,6 +1981,7 @@ if ('mediaSession' in navigator) {
 // Signing in (optional) lets bought songs play in full where Bandcamp only gives everyone else a preview.
 let bcUser = safeGet('rw_bc_user') || '';
 let bcItems = readJSON('rw_bc_items', []);
+let bcSort = safeGet('rw_bcsort') || 'new';
 let bcBusy = '', bcFilter = '', bcAlbum = null, bcShown = [], bcSignedIn = safeGet('rw_bc_in') === 't';
 let bc = null;   // what's playing: { queue: [tracks], i, shuffle, where: 'here' | 'speaker', state }
 const BC_CAN = NATIVE;
@@ -2012,7 +2013,7 @@ async function bcLoad() {
       const d = await getJSON('https://bandcamp.com/api/fancollection/1/collection_items', { method: 'POST', type: 'application/json', body: JSON.stringify({ fan_id: fan, older_than_token: token, count: 100 }) });
       (d.items || []).forEach(x => {
         if (!x.item_url) return;
-        out.push({ id: x.tralbum_type + x.tralbum_id, title: x.album_title || x.item_title, artist: x.band_name, url: x.item_url, art: bcArt(x.item_art_id), type: x.tralbum_type, band: x.band_id, tid: x.tralbum_id });
+        out.push({ at: Date.parse(x.purchased || x.added || '') || 0, id: x.tralbum_type + x.tralbum_id, title: x.album_title || x.item_title, artist: x.band_name, url: x.item_url, art: bcArt(x.item_art_id), type: x.tralbum_type, band: x.band_id, tid: x.tralbum_id });
       });
       bcBusy = 'Loading your collection… ' + out.length; render();
       if (!d.more_available || !d.last_token) break;
@@ -2073,8 +2074,8 @@ function bcView() {
   h += '<div class="bcHead"><div class="who"><b>' + esc(bcUser || 'Bandcamp') + '</b> · ' + (bcBusy ? esc(bcBusy) : bcItems.length + ' items') + '</div>'
     + '<button class="btn main" id="bcShufAll">🔀 Shuffle all</button>' + (bcIdx && !(bcIdx.miss && bcIdx.miss.length) && bcIdx.alb.length >= bcItems.length ? '' : '<button class="btn" id="bcFind" title="Make every song searchable (about 9 MB the first time)">🔎 ' + (bcIdx ? 'Finish finding songs' : 'Find songs') + '</button>') + '<button class="btn" id="bcMenu">⋯</button></div>'
     + (bcIdxBusy ? '<div class="hint bcIdxMsg" style="margin:0 0 8px">' + esc(bcIdxBusy) + '</div>' : '');
-  h += '<div class="clearWrap"><input class="field" id="bcFilter" placeholder="' + (bcIdx ? 'Find a song, album or artist (' + bcIdx.tr.length + ' songs)' : 'Filter by album or artist') + '" value="' + esc(bcFilter) + '" autocomplete="off">'
-    + '<button type="button" class="clearX" id="bcFilterX" title="Clear"' + (bcFilter ? '' : ' hidden') + '>✕</button></div>';
+  h += '<div class="findRow"><div class="clearWrap"><input class="field" id="bcFilter" placeholder="' + (bcIdx ? 'Find a song, album or artist (' + bcIdx.tr.length + ' songs)' : 'Filter by album or artist') + '" value="' + esc(bcFilter) + '" autocomplete="off">'
+    + '<button type="button" class="clearX" id="bcFilterX" title="Clear"' + (bcFilter ? '' : ' hidden') + '>✕</button></div>' + sortSelect('bcSort', bcSort) + '</div>';
   h += '<ul class="list" id="bcList" style="margin-top:10px">' + bcListHtml() + '</ul>';
   return h;
 }
@@ -2084,7 +2085,8 @@ function bcListHtml() {
   bcHits = f.length > 1 ? bcSongMatches(f) : [];
   const playing = bcTrack();
   const songs = bcHits.length ? '<li class="songHits" data-sec="songs"' + secO('bc', 'songs') + '><h4>Songs · ' + bcHits.length + (bcHits.length >= 200 ? '+' : '') + '</h4><ul class="list">' + bcHits.slice(0, 60).map((t, i) => '<li class="trk' + (playing && playing.au === t.au && playing.n === t.n ? ' now' : '') + '" data-hit="' + i + '"><img class="art" style="width:36px;height:36px" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '"><span class="t">' + esc(t.title) + '<br><small style="color:var(--muted)">' + esc(t.artist + ' · ' + t.album) + '</small></span><span class="d">' + bcTime(t.dur) + '</span><button class="add" data-adds="' + i + '" title="Add to a playlist">＋</button></li>').join('') + '</ul><h4>Albums</h4></li>' : '';
-  bcShown = f ? bcItems.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : bcItems;
+  const all = sortLists(bcItems, bcSort, 'Bandcamp', x => x.url);
+  bcShown = f ? all.filter(x => (x.title + ' ' + x.artist).toLowerCase().includes(f)) : all;
   const cut = bcShown.slice(0, bcMore);
   if (!f) secPick.bc = null;   // a new search starts with every part closed
   const bar = f ? secBar('bc', f, { songs: bcHits.length >= 200 ? '200+' : bcHits.length, albums: bcShown.length }) : '', oA = secO('bc', 'albums');
@@ -2106,6 +2108,8 @@ function bcWire() {
   on('bcShufAll', () => bcShuffleAll());
   on('bcMenu', () => bcMenuOpen());
   on('bcMoreBtn', () => { bcMore += 150; $('bcList').innerHTML = bcListHtml(); bcWire(); });
+  const so = $('bcSort');
+  if (so) so.onchange = () => { bcSort = so.value; safeSet('rw_bcsort', bcSort); bcMore = 150; $('bcList').innerHTML = bcListHtml(); bcWire(); };
   const f = $('bcFilter');
   if (f) f.oninput = () => { bcFilter = f.value; bcMore = 150; $('bcFilterX').hidden = !bcFilter; $('bcList').innerHTML = bcListHtml(); bcWire(); };
   on('bcFilterX', () => { bcFilter = ''; bcMore = 150; if (f) { f.value = ''; f.focus(); } $('bcFilterX').hidden = true; $('bcList').innerHTML = bcListHtml(); bcWire(); });
@@ -2174,6 +2178,7 @@ function bcHeard() {
   const t = bcTrack();
   if (!t || bc.heardUrl === (t.sc || t.url)) return;
   bc.heardUrl = t.sc || t.url;
+  markListPlayed(t.au);
   const name = t.artist + ' – ' + t.title;
   if (!heard[0] || songKey(heard[0].song) !== songKey(name)) {
     heard.unshift({ song: name, station: trkSrc(t) + ' · ' + t.album, at: Date.now() });
@@ -2578,7 +2583,7 @@ function scView() {
   h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scCount()) + '</div>'
     + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
   h += '<div class="findRow"><div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
-    + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>' + '<select id="scSort" class="sortSel" aria-label="Order of your lists" title="Order of your lists">' + SC_SORTS.map(([v, n]) => '<option value="' + v + '"' + (v === scSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>' + '</div>';
+    + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>' + sortSelect('scSort', scSort) + '</div>';
   h += '<ul class="list" id="scList" style="margin-top:10px">' + scListHtml() + '</ul>';
   if (!scIdxRun && (!scIdx || !scIdx.at)) setTimeout(scIndex, 1500);
   return h;
@@ -2601,14 +2606,30 @@ function scListHtml() {
     + (!scShown.length && !scHits.length && !scBusy ? '<li class="empty">' + (scIdxBusy ? 'Nothing in your lists yet — still reading your playlists.' : 'Nothing in your lists matches.') + '</li>' : '')
     + web;
 }
-// Your lists in the order picked in the menu (Liked songs and Uploads stay on top).
-const SC_SORTS = [['new', 'Newest first'], ['old', 'Oldest first'], ['az', 'A → Z'], ['za', 'Z → A'], ['played', 'Recently played']];
-function scSorted() {
-  const top = scItems.filter(x => x.kind !== 'pl'), pl = scItems.filter(x => x.kind === 'pl');
-  const az = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
-  const by = { new: (a, b) => (b.at || 0) - (a.at || 0), old: (a, b) => (a.at || 0) - (b.at || 0), az, za: (a, b) => az(b, a),
-    played: (a, b) => (scPlayed[b.id] || 0) - (scPlayed[a.id] || 0) || (b.at || 0) - (a.at || 0) }[scSort] || null;
-  return top.concat(by ? pl.slice().sort(by) : pl);
+// Lists / albums in the order picked in the menu. "Recently played" goes by when a song from it last played:
+// every song that plays marks its list (rw_list_played), and older plays come from the Recently played songs.
+const LIST_SORTS = [['new', 'Newest first'], ['old', 'Oldest first'], ['az', 'A → Z'], ['za', 'Z → A'], ['played', 'Recently played']];
+let listPlayed = readJSON('rw_list_played', {});
+function markListPlayed(key) { if (!key) return; listPlayed[key] = Date.now(); safeSet('rw_list_played', JSON.stringify(listPlayed)); }
+function playedTimes(src, items, keyOf) {
+  const byTitle = {}, out = {};
+  heard.forEach(h => { const st = String(h.station || ''); if (st.startsWith(src + ' · ')) { const t = st.slice(src.length + 3); byTitle[t] = Math.max(byTitle[t] || 0, h.at || 0); } });
+  items.forEach(x => { const k = keyOf(x); out[x.id] = Math.max(listPlayed[k] || 0, byTitle[x.title] || 0, src === 'SoundCloud' ? scPlayed[x.id] || 0 : 0); });
+  return out;
+}
+function sortLists(list, sort, src, keyOf) {
+  const az = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base', numeric: true });
+  const pos = new Map(list.map((x, i) => [x, i]));   // no date known: keep the order the service gave (newest first)
+  const when = (a, b) => (b.at || 0) - (a.at || 0) || pos.get(a) - pos.get(b);
+  if (sort === 'az') return list.slice().sort(az);
+  if (sort === 'za') return list.slice().sort((a, b) => az(b, a));
+  if (sort === 'old') return list.slice().sort((a, b) => when(b, a));
+  if (sort === 'played') { const p = playedTimes(src, list, keyOf); return list.slice().sort((a, b) => (p[b.id] || 0) - (p[a.id] || 0) || when(a, b)); }
+  return list.slice().sort(when);
+}
+const sortSelect = (id, cur) => '<select id="' + id + '" class="sortSel" aria-label="Order" title="Order">' + LIST_SORTS.map(([v, n]) => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>';
+function scSorted() {   // Liked songs and Uploads stay on top
+  return scItems.filter(x => x.kind !== 'pl').concat(sortLists(scItems.filter(x => x.kind === 'pl'), scSort, 'SoundCloud', x => 'sc:' + x.id));
 }
 function scMarkPlayed(id) { if (!id) return; scPlayed[id] = Date.now(); safeSet('rw_sc_played', JSON.stringify(scPlayed)); }
 function scWire() {
@@ -4044,7 +4065,7 @@ function unGarble(x) {
     },
   };
   // Settings: the newest change of each one wins (volume stays per device).
-  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order', rw_scsort: 'SoundCloud lists order' };
+  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order', rw_scsort: 'SoundCloud lists order', rw_bcsort: 'Bandcamp albums order' };
   const setAt = () => readJSON('rw_set_at', {});
   K.settings = {
     file: 'settings', what: 'settings', count: () => Object.keys(setAt()).length,
@@ -4071,7 +4092,7 @@ function unGarble(x) {
       favSort = safeGet('rw_favsort') || 'cat';
       timeStyle = (parseInt(safeGet('rw_time'), 10) || 0) % TIME_STYLES.length; try { drawClock(); } catch (e) {}
       pickSort = safeGet('rw_picksort') || 'new'; pickRev = safeGet('rw_picksrev') === 't';
-      scSort = safeGet('rw_scsort') || 'new';
+      scSort = safeGet('rw_scsort') || 'new'; bcSort = safeGet('rw_bcsort') || 'new';
       render();
       return n;
     },
