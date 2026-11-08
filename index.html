@@ -397,7 +397,7 @@
   .secPill small { color: var(--muted); font-size: .75rem; margin-left: 2px; }
   .secPill.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
   .secPill.lift { transition: none; z-index: 2; position: relative; box-shadow: 0 6px 18px rgba(0,0,0,.35); cursor: grabbing; }
-  .secPills.dragging .secPill:not(.lift) { pointer-events: none; }
+  .secPills.secMoving .secPill:not(.lift) { pointer-events: none; }
   .secPills { order: -1; }
   .secPills:not([data-open~="songs"]) ~ [data-sec="songs"],
   .secPills:not([data-open~="albums"]) ~ [data-sec="albums"],
@@ -592,7 +592,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.27.0';
+const VERSION = '1.27.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2835,7 +2835,7 @@ function secDragStart() {
   d.rects = d.pills.map(x => x.getBoundingClientRect());
   d.from = d.pills.indexOf(d.b); d.to = d.from; d.on = true;
   try { d.b.setPointerCapture(d.id); } catch (e) {}
-  d.b.classList.add('lift'); d.bar.classList.add('dragging');
+  d.b.classList.add('lift'); d.bar.classList.add('secMoving');
   rwDragging = true;
   try { if (d.touch && navigator.vibrate) navigator.vibrate(15); } catch (e) {}
 }
@@ -2845,7 +2845,7 @@ function secDragEnd(drop) {
   if (!d.on) return;
   rwDragging = false; secNoClick = Date.now();
   d.pills.forEach(x => { x.style.transform = ''; });
-  d.b.classList.remove('lift'); d.bar.classList.remove('dragging');
+  d.b.classList.remove('lift'); d.bar.classList.remove('secMoving');
   if (!drop || d.to === d.from) return;
   const vis = d.pills.map(x => x.dataset.seck), k = vis.splice(d.from, 1)[0];
   vis.splice(d.to, 0, k);
