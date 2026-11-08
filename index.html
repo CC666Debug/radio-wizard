@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.28.0';
+const VERSION = '1.28.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -3788,7 +3788,7 @@ function favView() {
   let h = '';
   if (!favs.length) return '<div class="empty">Tap ♡ on a station to keep it here.</div>' + '<div class="bkRow"><button type="button" class="btn" data-bkone="favs">⬇️ Back up</button><button type="button" class="btn" data-bkrestore>⬆️ Restore</button></div>';
   h += '<div class="favHead"><div class="who">' + favs.length + ' favorite' + (favs.length === 1 ? '' : 's') + '</div><select id="favSort" aria-label="Order">'
-    + [['cat', 'By category'], ['az', 'A → Z'], ['new', 'Newest first']].map(([v, n]) => '<option value="' + v + '"' + (v === favSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>';
+    + [['cat', 'By category'], ['az', 'A → Z'], ['za', 'Z → A'], ['new', 'Newest first'], ['old', 'Oldest first']].map(([v, n]) => '<option value="' + v + '"' + (v === favSort ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>';
   const az = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   if (favSort === 'cat') {
     const groups = new Map();
@@ -3801,7 +3801,9 @@ function favView() {
     });
     return h + '<div class="bkRow"><button type="button" class="btn" data-bkone="favs">⬇️ Back up</button><button type="button" class="btn" data-bkrestore>⬆️ Restore</button></div>';
   }
-  const list = favSort === 'az' ? favs.slice().sort(az) : favs;
+  const byAt = (a, b) => (b.at || 0) - (a.at || 0);   // by when it was added (synced ones keep their own date)
+  const list = favSort === 'az' ? favs.slice().sort(az) : favSort === 'za' ? favs.slice().sort((a, b) => az(b, a))
+    : favSort === 'old' ? favs.slice().sort((a, b) => byAt(b, a)) : favs.slice().sort(byAt);
   return h + '<ul class="list" style="margin-top:8px">' + list.map(st => { listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>'
     + '<div class="bkRow"><button type="button" class="btn" data-bkone="favs">⬇️ Back up</button><button type="button" class="btn" data-bkrestore>⬆️ Restore</button></div>';
 }
