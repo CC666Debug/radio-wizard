@@ -595,7 +595,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.30.1';
+const VERSION = '1.31.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1972,8 +1972,42 @@ if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('play', () => { if (bc) { audio.play(); return; } if (current && !here) playHere(current); else audio.play(); });
   navigator.mediaSession.setActionHandler('pause', () => { if (bc) audio.pause(); else stopHere(); });
   navigator.mediaSession.setActionHandler('stop', () => { if (bc) bcStop(); else stopHere(); });
-  navigator.mediaSession.setActionHandler('nexttrack', () => { if (bc) bcNext(); });
+  navigator.mediaSession.setActionHandler('nexttrack', () => goNext());
+  try { navigator.mediaSession.setActionHandler('previoustrack', () => goPrev()); } catch (e) {}
 }
+
+// Headphone / Bluetooth / lock screen / notification buttons in the Android app (its MediaKeys session):
+// they do exactly what RW's own play, next and previous buttons do, here or on the speaker.
+function barPlaying() { return !els.playBtn.disabled && !els.playIcon.innerHTML.includes('M8 5v14'); }
+window.rwMediaKey = k => {
+  const on = barPlaying();
+  diag('media button: ' + k);
+  if (k === 'next') goNext();
+  else if (k === 'prev') goPrev();
+  else if (k === 'stop') { if (on) els.playBtn.click(); }
+  else if (k === 'play' ? !on : k === 'pause' ? on : true) els.playBtn.click();
+};
+// Tells the app what's playing, so it knows play from pause and shows the song in the notification.
+let mediaSent = '';
+function reportMedia() {
+  if (!window.AndroidCast || !window.AndroidCast.mediaState) return;
+  const t = bc && bcTrack(), lp = !t && !current && lastPlay ? lastPlay : null;
+  const abs = u => u && /^https?:/.test(u) ? u : new URL('icon-512.png', location.href).href;
+  const m = {
+    active: !!(t || current || lp),
+    playing: barPlaying(),
+    speaker: castConnected() && (!bc || bc.where === 'speaker'),
+    title: t ? t.title : current ? (song || current.name) : lp ? lp.t.title : '',
+    artist: t ? (t.artist || '') : current ? (song ? current.name : 'RadioWizard') : lp ? (lp.t.artist || '') : '',
+    album: t ? (t.album || '') : '',
+    art: abs(t ? t.art : current ? (songArt || current.img) : lp ? (lp.art || lp.t.art) : ''),
+  };
+  const j = JSON.stringify(m);
+  if (j === mediaSent) return;
+  mediaSent = j;
+  try { window.AndroidCast.mediaState(j); } catch (e) {}
+}
+{ const draw = renderBar; renderBar = function () { draw.apply(this, arguments); try { reportMedia(); } catch (e) {} }; }
 
 // ── Bandcamp: your own collection (Android app) ─
 // Bandcamp has no app access for listeners, so this reads the collection the way bandcamp.com does:
