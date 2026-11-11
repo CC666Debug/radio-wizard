@@ -561,7 +561,8 @@
   <div class="bkKind" style="display:block"><b>Helper</b> <small>(optional)</small>
     <div class="hint" style="margin:2px 0 6px">Your own free helper (helper/ in RW's GitHub) keeps SoundCloud playing on speakers all night and keeps a copy of these backups for all your devices. Paste its link once on each device; it stays on this device only.</div>
     <div class="row" style="margin:0"><input class="field" id="helperLink" type="password" placeholder="https://rw-helper.….workers.dev/?k=…" autocapitalize="off" autocomplete="off" style="flex:1"><button type="button" id="helperSave">Save</button></div>
-    <div class="hint" id="helperMsg" style="margin:4px 0 0"></div></div>
+    <div class="hint" id="helperMsg" style="margin:4px 0 0"></div>
+    <div class="row" style="margin:6px 0 0;justify-content:flex-start;align-items:center;gap:8px"><small>Send changes</small><select class="field" id="helperEvery" style="width:auto"><option value="30">right away</option><option value="300">every 5 min</option><option value="900">every 15 min</option><option value="3600">every hour</option></select></div></div>
   <div class="row" style="justify-content:flex-start"><button type="button" class="main" id="bkAll">⬇️ Back up everything</button><button type="button" id="bkFolder" hidden>📁 Other folder</button><button type="button" id="bkNoFolder" hidden>🚫 Stop folder</button><button type="button" id="bkRestore">⬆️ Restore files</button></div>
   <div class="row"><button type="button" class="main" id="bkClose">Close</button></div>
 </dialog>
@@ -599,7 +600,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.33.1';
+const VERSION = '1.34.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4310,15 +4311,26 @@ function unGarble(x) {
   const write = k => { if (helperOk) cloudWrite(k); if (folderOk) androidFolders ? writeAndroid(k) : writeWeb(k); };
   // The helper keeps the same files too (every device's), so devices sync through it without a shared folder.
   let cloudV = +safeGet('rw_cloud_v') || 0, cloudFiles = null;
-  const cloudTimers = {};
-  function cloudWrite(k) {
-    clearTimeout(cloudTimers[k]);
-    cloudTimers[k] = setTimeout(async () => {   // a burst of changes = one save (the free plan allows 1,000 a day)
+  // Changes wait and go to the helper together, every few minutes (Backups → Helper → Send changes), so a busy
+  // evening is a handful of saves (the free plan allows 1,000 a day). Anything waiting goes when RW goes to the background.
+  const cloudDue = new Set();
+  let cloudTimer = null;
+  const cloudEvery = () => (+safeGet('rw_helper_every') || 300) * 1000;
+  async function cloudFlush() {
+    clearTimeout(cloudTimer); cloudTimer = null;
+    const kinds = [...cloudDue]; cloudDue.clear();
+    for (const k of kinds) {
       const u = helperUrl('/file/' + fileName(k)); if (!u) return;
-      try { const r = await fetch(u, { method: 'POST', body: K[k].text(), headers: { 'Content-Type': 'text/plain' } }); if (!r.ok) diag('helper backup ' + fileName(k) + ': ' + r.status); }
-      catch (e) { diag('helper backup failed: ' + e.message); }
-    }, 8000);
+      try { const r = await fetch(u, { method: 'POST', body: K[k].text(), headers: { 'Content-Type': 'text/plain' }, keepalive: true }); if (!r.ok) diag('helper backup ' + fileName(k) + ': ' + r.status); }
+      catch (e) { diag('helper backup failed: ' + e.message); cloudDue.add(k); }
+    }
   }
+  function cloudWrite(k) {
+    cloudDue.add(k);
+    if (!cloudTimer) cloudTimer = setTimeout(cloudFlush, cloudEvery());
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden && cloudDue.size && helperOk) cloudFlush(); });
+  window.addEventListener('pagehide', () => { if (cloudDue.size && helperOk) cloudFlush(); });
   // Fresh files from the helper, or null when nothing changed since last time.
   async function cloudRead(all) {
     const u = helperUrl('/files', '&app=radiowizard' + (all ? '' : '&v=' + cloudV)); if (!u) return null;
@@ -4512,7 +4524,8 @@ function unGarble(x) {
     const r = await helperCheck(); helperSay(r);
     if (r === 'ok') { for (const k of KINDS) if (!on[k]) { on[k] = true; safeSet('rw_bk_' + k, 't'); } await cloudSync(true); drawBk(); helperSay(r); }
   });
-  $('backupsLink').addEventListener('click', e => { e.preventDefault(); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
+  $('helperEvery').addEventListener('change', () => { safeSet('rw_helper_every', $('helperEvery').value); if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = setTimeout(cloudFlush, cloudEvery()); } });
+  $('backupsLink').addEventListener('click', e => { e.preventDefault(); $('helperEvery').value = String(cloudEvery() / 1000); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
   // At start: check the helper, then sync through it.
   helperCheck().then(r => { if (r === 'ok') setTimeout(() => cloudSync(false), 2500); else if (r !== 'none') diag('helper: ' + r); });
   $('bkBody').addEventListener('click', e => { const b = e.target.closest('[data-bk]'); if (b) { backUp([b.dataset.bk], false).then(drawBk); } });

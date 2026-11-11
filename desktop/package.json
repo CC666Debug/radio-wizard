@@ -1,6 +1,6 @@
 {
   "name": "radio-wizard-desktop",
   "private": true,
-  "version": "1.33.1",
+  "version": "1.34.0",
   "devDependencies": { "@tauri-apps/cli": "^2" }
 }
