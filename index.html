@@ -599,7 +599,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.32.2';
+const VERSION = '1.33.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -919,10 +919,23 @@ const SOURCES = [
       }));
     },
   },
+  {
+    id: 'rw', name: 'RW picks', web: true, about: 'Better streams the directories miss, added to RadioWizard itself',
+    async search(q) {
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      return RW_PICKS.filter(x => { const hay = (x.name + ' ' + x.tags.join(' ') + ' ' + (x.also || '')).toLowerCase(); return words.every(w => hay.includes(w)); })
+        .map(x => ({ name: x.name, img: x.img || '', country: x.country || '', tags: x.tags, codec: x.codec, bitrate: x.bitrate, pop: 0, src: { src: 'rw', url: x.url } }));
+    },
+  },
+];
+// Stations no directory lists (or only lists in a worse version). Add more here.
+const RW_PICKS = [
+  { name: 'Radio Caprice WITCH HOUSE (320k)', url: 'http://79.120.77.11:8004/witchhouse', tags: ['witch house'], also: 'witchhouse caprice', country: 'RU', codec: 'AAC+', bitrate: 320 },
 ];
 const SRC = Object.fromEntries(SOURCES.map(s => [s.id, s]));
 const usable = s => NATIVE || s.web;
 let srcOn = readJSON('rw_srcs', null) || SOURCES.map(s => s.id);
+if (safeGet('rw_srcs_rw') !== 't') { if (!srcOn.includes('rw')) srcOn.push('rw'); safeSet('rw_srcs_rw', 't'); }   // RW picks starts on, even where sources were picked before
 
 // Playlist files (.pls / .m3u) hold the real stream links.
 function playlistLinks(text) {
@@ -1344,6 +1357,9 @@ function render() {
     h += favView();
   } else {
     const list = recent;
+    // Every song that played (the same list as 👍 → 🕰️ Recently played), one tap away; Recent itself keeps what you started.
+    if (heard.length) h += '<ul class="list" style="margin-top:12px"><li class="st" id="recentSongs" style="cursor:pointer"><div class="art" style="display:flex;align-items:center;justify-content:center;font-size:26px">🕰️</div>'
+      + '<div class="body"><div class="name">Songs played</div><div class="meta">' + heard.length + ' song' + (heard.length === 1 ? '' : 's') + ', newest first</div></div><div style="align-self:center;font-size:22px;opacity:.6;padding:0 6px">›</div></li></ul>';
     if (!list.length) h += '<div class="empty">Stations, albums and playlists you play show up here.</div>';
     else h += '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="chip" id="recentClear">🗑️ Clear recent</button></div>';
     h += '<ul class="list" style="margin-top:12px">' + list.map((st, ri) => { if (st.m) return recentMusicRow(st, ri); listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
@@ -2221,7 +2237,7 @@ function bcHeard() {
   const name = t.artist + ' – ' + t.title;
   if (!heard[0] || songKey(heard[0].song) !== songKey(name)) {
     heard.unshift({ song: name, station: trkSrc(t) + ' · ' + t.album, at: Date.now() });
-    heard = heard.slice(0, 60);
+    heard = heard.slice(0, 200);
     safeSet('rw_heard', JSON.stringify(heard));
   }
 }
@@ -3313,7 +3329,7 @@ function setSong(title, station, starts, ends, art) {
     diag('song: ' + title);
     if (!heard[0] || songKey(heard[0].song) !== songKey(title)) {
       heard.unshift({ song: title, station, at: Date.now() });
-      heard = heard.slice(0, 60);
+      heard = heard.slice(0, 200);
       safeSet('rw_heard', JSON.stringify(heard));
     }
     if (!art) findArt(title);
@@ -3497,6 +3513,7 @@ $('songsList').addEventListener('click', e => {
 });
 document.querySelectorAll('#songsDlg [data-stab]').forEach(b => b.addEventListener('click', () => { songsTab = b.dataset.stab; drawSongs(); }));
 $('songsBtn').addEventListener('click', () => { drawSongs(); $('songsDlg').showModal(); });
+els.main.addEventListener('click', e => { if (e.target.closest('#recentSongs')) { songsTab = 'recent'; drawSongs(); $('songsDlg').showModal(); } });
 $('songsClose').addEventListener('click', () => $('songsDlg').close());
 $('songsDlg').addEventListener('click', e => { if (e.target === $('songsDlg')) $('songsDlg').close(); });
 // Clear the recently-played log: first tap asks, second tap (within 4 s) clears.
