@@ -592,8 +592,8 @@
   <h3>Diagnostic log</h3>
   <textarea id="diagText" readonly></textarea>
   <div class="row">
+    <button type="button" id="diagClear" style="margin-right:auto">Clear log</button>
     <button type="button" id="gcBtn">Don’t count me</button>
-    <button type="button" id="diagClear">Clear log</button>
     <button type="button" id="diagCopy">Copy log</button>
     <button type="button" class="main" id="diagClose">Close</button>
   </div>
@@ -603,7 +603,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.35.3';
+const VERSION = '1.36.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1675,7 +1675,7 @@ window.__onGCastApiAvailable = function (available) {
       if (bc && bc.where === 'here') { const pos = audio.currentTime || 0; audio.pause(); bc.where = 'speaker'; bcLoadSpeaker(pos); }
       else if (here && current) { stopHere(); loadOnSpeaker(current); }
     }
-    if (e.sessionState === S.SESSION_RESUMED) { if (speakerHasLast()) adoptSpeakerMusic(); else if (!bc) speakerStation = current; }
+    if (e.sessionState === S.SESSION_RESUMED) { if (speakerHasLast()) adoptSpeakerMusic(); else if (!bc && stationOnSpeaker()) speakerStation = current; }
     if (e.sessionState === S.SESSION_START_FAILED) showNotice('The speaker didn’t accept the connection. Try again.');
     if (e.sessionState === S.SESSION_ENDING) {
       if (bc && bc.where === 'speaker') bc.carry = castActive() && !speakerPaused() ? { pos: player.currentTime || 0 } : null;
@@ -1721,7 +1721,7 @@ async function loadOnSpeaker(st, links) {
   const t = performance.now();
   diag('sending ' + st.name + ' to ' + session.getCastDevice().friendlyName + ' · ' + l.url);
   safeSet('rw_cast', l.url);
-  try { localStorage.removeItem('rw_cast_m'); } catch (e) {}
+  try { localStorage.removeItem('rw_cast_m'); localStorage.removeItem('rw_cast_q'); } catch (e) {}
   kickStart();
   session.loadMedia(req).then(() => {
     diag('speaker accepted after ' + ((performance.now() - t) / 1000).toFixed(2) + 's'); kickStart();
@@ -1752,21 +1752,41 @@ function watchStall() {
 let lastSpeakerState = null;
 // RW reopened while the speaker plays the song it sent before: pick that song (and its album / list / playlist /
 // shuffle) back up, instead of taking it for the last station.
+// Every song RW handed the speaker's queue (newest 80), so a reopened RW knows which one it's on, however far it got.
+const castQ = () => readJSON('rw_cast_q', []);
+function castQAdd(t, fresh) {
+  const q = fresh ? [] : castQ();
+  q.push(Object.assign(bcItem(t), { url: t.url, mime: t.mime, exp: t.exp }));
+  safeSet('rw_cast_q', JSON.stringify(q.slice(-80)));
+}
+// The speaker is playing the station RW last sent (not just whatever station was picked last, maybe days ago).
+function stationOnSpeaker() {
+  const mi = player && player.mediaInfo;
+  return !!(current && mi && mi.contentId && mi.contentId === safeGet('rw_cast'));
+}
 function speakerHasLast() {
   const m = readJSON('rw_cast_m', null), mi = player && player.mediaInfo;
-  if (!lastPlay || !mi || !mi.contentId) return false;
+  if (!mi || !mi.contentId) return false;
+  if (castQ().some(x => x.url === mi.contentId)) return true;
+  if (!lastPlay) return false;
   if (m && m.url) return mi.contentId === m.url;
   return mi.contentId !== safeGet('rw_cast');   // sent before RW noted songs: anything that isn't the last station
 }
 function adoptSpeakerMusic() {
-  const L = lastPlay, m = readJSON('rw_cast_m', null) || { url: player.mediaInfo.contentId, at: Date.now() };
-  if (!L || bc) return;
+  if (bc) return;
+  const cid = player.mediaInfo.contentId, qt = castQ().find(x => x.url === cid);
+  let m = readJSON('rw_cast_m', null) || { url: cid, at: Date.now() };
+  if (m.url !== cid) m = { url: cid, at: Date.now() };   // moved on in its queue while RW was closed: the song's place in time isn't known, so the clock starts here
+  let L = lastPlay;
+  if (qt) L = Object.assign({}, L || { key: '' }, { t: qt, art: qt.art });
+  if (!L) return;
   const t = Object.assign({}, L.t, { url: m.url, art: L.art || L.t.art, exp: Date.now() + 3600e3 });
   speakerStation = null; songWatchFor = null; songStop();
   bc = { queue: [t], i: 0, shuffle: false, where: 'speaker', state: 'playing', rkey: L.key, sent: m.url };
   bcClock.start = 0; bcClock.pos = Math.max(0, (Date.now() - m.at) / 1000); bcClock.paused = false; bcClockPlaying();
   diag('speaker is still playing ' + t.title + ': picked it back up');
-  bcRefill(L);
+  safeSet('rw_cast_m', JSON.stringify(m));
+  bcRefill(L); saveLast();
   renderBar();
 }
 async function bcRefill(L) {
@@ -1799,7 +1819,7 @@ function onSpeakerState() {
   if (bc && bc.where === 'speaker') { bcSpeakerState(media); return; }
   if (player.playerState === PS.PLAYING) {
     if (speakerLoading && speakerLinks) rememberWorking(speakerLoading, speakerLinks[speakerLinks.i]);
-    speakerStation = speakerLoading || speakerStation || current; speakerLoading = null; speakerRetries = 0; playStarted();
+    speakerStation = speakerLoading || speakerStation || (stationOnSpeaker() ? current : null); speakerLoading = null; speakerRetries = 0; playStarted();
     const sl = speakerLinks && speakerLinks[speakerLinks.i];
     if (speakerStation && songWatchFor !== speakerStation.key) { songWatchFor = speakerStation.key; songWatch(speakerStation, sl ? sl.url : safeGet('rw_cast')); }
     return;
@@ -2312,6 +2332,7 @@ function bcLoadSpeaker(pos, seek) {
   bc.queued = q ? null : undefined;
   bc.sent = t.url;
   safeSet('rw_cast_m', JSON.stringify({ url: t.url, at: Date.now() - (pos || 0) * 1000 }));   // so a reopened RW knows the speaker is playing this song
+  if (!seek) castQAdd(t, true);
   const b = bc;
   session.loadMedia(req).then(() => {
     diag('speaker accepted the song');
@@ -2355,7 +2376,7 @@ async function bcQueueFill() {
       if (!t.url) { b.queue.splice(j, 1); continue; }
       await session.queueAdd([spkArgs(t)]);
       if (bc !== b) break;
-      b.queued = j;
+      b.queued = j; castQAdd(t);
       diag('queue: ' + t.title + ' added (' + (j - b.i) + ' ahead)');
     }
   } catch (e) { diag('queue FAILED: ' + e); }
@@ -4619,7 +4640,17 @@ $('diagCopy').addEventListener('click', () => {
 });
 $('diagClose').addEventListener('click', () => diagDlg.close());
 diagDlg.addEventListener('click', e => { if (e.target === diagDlg) diagDlg.close(); });
-$('diagClear').addEventListener('click', () => { logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); $('diagText').value = logLines.join(String.fromCharCode(10)); });
+// Clear takes two taps, and Undo brings it all back for 15 s (a log the user meant to send was wiped by one tap).
+let diagClearArm = 0, diagUndo = null, diagUndoT = 0;
+$('diagClear').addEventListener('click', () => {
+  const b = $('diagClear'), nl = String.fromCharCode(10);
+  if (diagUndo) { logLines.splice(0, logLines.length, ...diagUndo); diagUndo = null; clearTimeout(diagUndoT); b.textContent = 'Clear log'; $('diagText').value = logLines.join(nl); return; }
+  if (Date.now() - diagClearArm > 4000) { diagClearArm = Date.now(); b.textContent = 'Tap again to clear'; setTimeout(() => { if (!diagUndo && Date.now() - diagClearArm >= 4000) b.textContent = 'Clear log'; }, 4100); return; }
+  diagClearArm = 0; diagUndo = logLines.slice();
+  logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); $('diagText').value = logLines.join(nl);
+  b.textContent = '↶ Undo clear';
+  diagUndoT = setTimeout(() => { diagUndo = null; b.textContent = 'Clear log'; }, 15000);
+});
 $('gcBtn').addEventListener('click', () => { if (safeGet('skipgc') === 't') localStorage.removeItem('skipgc'); else safeSet('skipgc', 't'); gcLabel(); });
 
 // ── Start ───────────────────────────────────────
