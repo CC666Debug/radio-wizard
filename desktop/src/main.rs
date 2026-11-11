@@ -235,6 +235,51 @@ fn bandcamp_logout() {
     let _ = fs::remove_file(app_dir().join("bandcamp-cookie.txt"));
 }
 
+/* ---------------- Backup folder ---------------- */
+// The page's backups go to a folder picked here (a real Windows dialog, owned by RW's window), remembered in
+// backup-folder.txt. The page reads and writes its .md files through these, like the Android app.
+
+fn backup_dir() -> Option<PathBuf> {
+    fs::read_to_string(app_dir().join("backup-folder.txt")).ok().map(|s| PathBuf::from(s.trim())).filter(|p| p.is_dir())
+}
+fn backup_file(name: &str) -> Option<PathBuf> {
+    let ok = !name.is_empty() && name.ends_with(".md") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_');
+    if ok { backup_dir().map(|d| d.join(name)) } else { None }
+}
+
+#[tauri::command]
+async fn backup_pick(window: tauri::WebviewWindow) -> Option<String> {
+    let mut d = rfd::AsyncFileDialog::new().set_title("Pick a folder for RadioWizard backups").set_parent(&window);
+    if let Some(p) = backup_dir() { d = d.set_directory(p); }
+    let path = d.pick_folder().await?.path().to_string_lossy().to_string();
+    let _ = fs::create_dir_all(app_dir());
+    let _ = fs::write(app_dir().join("backup-folder.txt"), &path);
+    Some(path)
+}
+
+#[tauri::command]
+fn backup_folder() -> Option<String> {
+    backup_dir().map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn backup_read(name: String) -> serde_json::Value {
+    match backup_file(&name).and_then(|f| fs::read_to_string(f).ok()) {
+        Some(text) => serde_json::json!({ "ok": true, "text": text }),
+        None => serde_json::json!({ "ok": false }),
+    }
+}
+
+#[tauri::command]
+fn backup_write(name: String, text: String) -> bool {
+    backup_file(&name).map(|f| fs::write(f, text).is_ok()).unwrap_or(false)
+}
+
+#[tauri::command]
+fn backup_forget() {
+    let _ = fs::remove_file(app_dir().join("backup-folder.txt"));
+}
+
 /* ---------------- SoundCloud sign-in ---------------- */
 
 #[tauri::command]
@@ -816,7 +861,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, cast_devices, cast_state, cast_connect, cast_load, cast_queue_add, cast_media, cast_volume, cast_end
+            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, backup_pick, backup_folder, backup_read, backup_write, backup_forget, cast_devices, cast_state, cast_connect, cast_load, cast_queue_add, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

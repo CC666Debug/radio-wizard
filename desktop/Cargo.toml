@@ -1,6 +1,6 @@
 [package]
 name = "radio-wizard"
-version = "1.32.1"
+version = "1.32.2"
 description = "RadioWizard: find any radio station, play your Bandcamp collection, cast to Nest speakers"
 edition = "2021"
 
@@ -19,6 +19,8 @@ native-tls = "0.2"
 mdns-sd = "0.21"
 # remembers the window's size and spot between runs
 tauri-plugin-window-state = "2"
+# the backup folder picker: a real Windows dialog owned by RW's window (the WebView's own picker could leave the window locked)
+rfd = "0.18"
 
 # small and fast
 [profile.release]

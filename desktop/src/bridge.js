@@ -98,6 +98,12 @@
 
   window.AndroidCast = {
     desktop: true,
+    // backup folder (a real Windows dialog): the page uses these instead of the WebView's own folder picker
+    folderPick: () => inv('backup_pick'),
+    folderGet: () => inv('backup_folder'),
+    folderRead: name => inv('backup_read', { name }),
+    folderWrite: (name, text) => inv('backup_write', { name, text }),
+    folderForget: () => inv('backup_forget'),
     httpGet(id, args) { inv('http_get', { args }).then(r => http(id, r), e => http(id, { error: String(e) })); },
     icy(id, args) { inv('icy', { args }).then(r => http(id, r), e => http(id, { ok: false, error: String(e) })); },
     probe(id, args) { inv('probe', { args }).then(r => http(id, r), e => http(id, { ok: false, error: String(e) })); },

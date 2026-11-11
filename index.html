@@ -599,7 +599,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.32.1';
+const VERSION = '1.32.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4020,7 +4020,19 @@ function unGarble(x) {
 {
   const A = window.AndroidCast;
   const androidFolders = !!(A && A.pickBackupFolder && !A.desktop);
-  const canPick = androidFolders || 'showDirectoryPicker' in window;
+  // Windows app: its own folder dialog and file access (the WebView's picker could leave the window locked, beeping).
+  // deskDir() looks like the web folder handle, so the web code below works unchanged.
+  const deskFolders = !!(A && A.desktop && A.folderPick);
+  const deskDir = path => ({
+    name: path.split(/[\/]/).filter(Boolean).pop() || path, desk: true,
+    queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+    getFileHandle: async name => ({
+      getFile: async () => ({ text: async () => { const r = await A.folderRead(name); if (!r || !r.ok) { const e = new Error('not there'); e.name = 'NotFoundError'; throw e; } return r.text; } }),
+      createWritable: async () => { let buf = ''; return { write: async t => { buf += t; }, close: async () => { if (!await A.folderWrite(name, buf)) throw new Error('couldn’t write ' + name); } }; },
+    }),
+  });
+  const hasPicker = deskFolders || 'showDirectoryPicker' in window;
+  const canPick = androidFolders || hasPicker;
   const day = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   const device = () => /Windows/.test(navigator.userAgent) ? 'pc' : /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2 ? 'mac'
     : Math.min(screen.width, screen.height) >= 600 ? 'tablet' : 'phone';
@@ -4341,8 +4353,8 @@ function unGarble(x) {
       $('backupMsg').textContent = 'Auto-saving as ' + fileName('songs');
       return;
     }
-    if (!('showDirectoryPicker' in window)) return;
-    webDir = await db('readonly', kv => kv.get('dir')).catch(() => null);
+    if (!hasPicker) return;
+    webDir = deskFolders ? await A.folderGet().then(p => p ? deskDir(p) : null).catch(() => null) : await db('readonly', kv => kv.get('dir')).catch(() => null);
     if (webDir && await webDir.queryPermission({ mode: 'readwrite' }) === 'granted') {
       folderOk = true;
       try { for (const k of KINDS) if (on[k]) { link(k, await readWeb(webDir, k)); writeWeb(k); } $('backupMsg').textContent = 'Auto-saving in ' + webDir.name + ' as ' + fileName('songs'); }
@@ -4376,14 +4388,20 @@ function unGarble(x) {
       done(kinds, 'your folder', took);
       return;
     }
-    if ('showDirectoryPicker' in window) {
+    if (hasPicker) {
       try {
-        let dir = pickNew || noFolder() ? null : webDir || await db('readonly', kv => kv.get('dir')).catch(() => null);
+        let dir = pickNew || noFolder() ? null : webDir || (deskFolders ? null : await db('readonly', kv => kv.get('dir')).catch(() => null));
         if (dir && await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') dir = null;
         const picked = !dir;
         if (picked) {
-          dir = await window.showDirectoryPicker({ id: 'rw-backup', mode: 'readwrite', startIn: 'documents' });
-          await db('readwrite', kv => kv.put(dir, 'dir')).catch(() => {});
+          if (deskFolders) {
+            const path = await A.folderPick();
+            if (!path) { const e = new Error('cancelled'); e.name = 'AbortError'; throw e; }
+            dir = deskDir(path);
+          } else {
+            dir = await window.showDirectoryPicker({ id: 'rw-backup', mode: 'readwrite', startIn: 'documents' });
+            await db('readwrite', kv => kv.put(dir, 'dir')).catch(() => {});
+          }
         }
         webDir = dir; folderOk = true; safeSet('rw_bk_nofolder', '');
         let took = 0;
@@ -4459,6 +4477,7 @@ function unGarble(x) {
   // Stop writing to the folder on this device (its files stay there). ⬇️ Back up picks a folder again.
   $('bkNoFolder').addEventListener('click', async () => {
     folderOk = false; webDir = null; safeSet('rw_bk_nofolder', 't');
+    if (deskFolders) await A.folderForget().catch(() => {});
     await db('readwrite', kv => kv.delete('dir')).catch(() => {});
     $('backupMsg').textContent = '';
     showNotice('Folder backups are off on this device. The files already there stay put' + (helperOk ? '; your helper keeps backing up.' : '.'));
