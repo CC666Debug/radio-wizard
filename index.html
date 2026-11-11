@@ -430,6 +430,7 @@
     <div class="titleRow">
       <img class="logo" src="icon-192.png" alt="">
       <h1>RadioWizard</h1>
+      <button class="iconBtn" id="bkBtn" type="button" title="Backups"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
       <button class="iconBtn" id="themeBtn" type="button" title="Light or dark (hold or right-click for colors)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path id="themeIcon" d=""/></svg></button>
       <button class="castBtn" id="castBtn" type="button" title="Cast to a speaker">
         <svg class="cIco" viewBox="0 0 24 24" fill="currentColor"><path class="fillIn" d="M5 7h14v10h-5.6A13 13 0 0 0 5 8.6z"/><path d="M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path class="w w1" d="M1 18v3h3a3 3 0 0 0-3-3z"/><path class="w w2" d="M1 14v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7z"/><path class="w w3" d="M1 10v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z"/></svg>
@@ -562,7 +563,7 @@
     <div class="hint" style="margin:2px 0 6px">Your own free helper (helper/ in RW's GitHub) keeps SoundCloud playing on speakers all night and keeps a copy of these backups for all your devices. Paste its link once on each device; it stays on this device only.</div>
     <div class="row" style="margin:0"><input class="field" id="helperLink" type="password" placeholder="https://rw-helper.….workers.dev/?k=…" autocapitalize="off" autocomplete="off" style="flex:1"><button type="button" id="helperSave">Save</button></div>
     <div class="hint" id="helperMsg" style="margin:4px 0 0"></div>
-    <div class="row" style="margin:6px 0 0;justify-content:flex-start;align-items:center;gap:8px"><small>Send changes</small><select class="field" id="helperEvery" style="width:auto"><option value="30">right away</option><option value="300">every 5 min</option><option value="900">every 15 min</option><option value="3600">every hour</option></select></div></div>
+    <div class="row" style="margin:6px 0 0;justify-content:flex-start;align-items:center;gap:8px"><small>Send changes</small><select class="field" id="helperEvery" style="width:auto"><option value="300">every 5 min</option><option value="900">every 15 min</option><option value="3600">every hour</option></select><button type="button" id="helperNow" hidden>⬆️ Send now</button></div></div>
   <div class="row" style="justify-content:flex-start"><button type="button" class="main" id="bkAll">⬇️ Back up everything</button><button type="button" id="bkFolder" hidden>📁 Other folder</button><button type="button" id="bkNoFolder" hidden>🚫 Stop folder</button><button type="button" id="bkRestore">⬆️ Restore files</button></div>
   <div class="row"><button type="button" class="main" id="bkClose">Close</button></div>
 </dialog>
@@ -600,7 +601,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.34.1';
+const VERSION = '1.35.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4315,7 +4316,7 @@ function unGarble(x) {
   // evening is a handful of saves (the free plan allows 1,000 a day). Anything waiting goes when RW goes to the background.
   const cloudDue = new Set();
   let cloudTimer = null;
-  const cloudEvery = () => (+safeGet('rw_helper_every') || 300) * 1000;
+  const cloudEvery = () => Math.max(300, +safeGet('rw_helper_every') || 300) * 1000;   // "right away" (30 s) was dropped: Send now instead
   async function cloudFlush() {
     clearTimeout(cloudTimer); cloudTimer = null;
     const kinds = [...cloudDue]; cloudDue.clear();
@@ -4324,10 +4325,13 @@ function unGarble(x) {
       try { const r = await fetch(u, { method: 'POST', body: K[k].text(), headers: { 'Content-Type': 'text/plain' }, keepalive: true }); if (!r.ok) diag('helper backup ' + fileName(k) + ': ' + r.status); }
       catch (e) { diag('helper backup failed: ' + e.message); cloudDue.add(k); }
     }
+    nowBtn();
   }
+  const nowBtn = () => { const b = $('helperNow'); if (b) { b.hidden = !(helperOk && cloudDue.size); b.disabled = false; b.textContent = '⬆️ Send now'; } };
   function cloudWrite(k) {
     cloudDue.add(k);
     if (!cloudTimer) cloudTimer = setTimeout(cloudFlush, cloudEvery());
+    nowBtn();
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden && cloudDue.size && helperOk) cloudFlush(); });
   window.addEventListener('pagehide', () => { if (cloudDue.size && helperOk) cloudFlush(); });
@@ -4525,8 +4529,14 @@ function unGarble(x) {
     const r = await helperCheck(); helperSay(r);
     if (r === 'ok') { for (const k of KINDS) if (!on[k]) { on[k] = true; safeSet('rw_bk_' + k, 't'); } await cloudSync(true); drawBk(); helperSay(r); }
   });
+  $('helperNow').addEventListener('click', async () => {
+    const b = $('helperNow'); b.disabled = true; b.textContent = 'Sending…';
+    await cloudFlush();
+    if (!cloudDue.size) { b.hidden = false; b.textContent = 'Sent ✓'; setTimeout(nowBtn, 2500); } else { b.disabled = false; b.textContent = '⬆️ Try again'; }
+  });
   $('helperEvery').addEventListener('change', () => { safeSet('rw_helper_every', $('helperEvery').value); if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = setTimeout(cloudFlush, cloudEvery()); } });
-  $('backupsLink').addEventListener('click', e => { e.preventDefault(); $('helperEvery').value = String(cloudEvery() / 1000); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
+  $('bkBtn').addEventListener('click', () => $('backupsLink').click());   // 💾 at the top opens the same Backups box as the footer link
+  $('backupsLink').addEventListener('click', e => { e.preventDefault(); $('helperEvery').value = String(cloudEvery() / 1000); nowBtn(); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
   // At start: check the helper, then sync through it.
   helperCheck().then(r => { if (r === 'ok') setTimeout(() => cloudSync(false), 2500); else if (r !== 'none') diag('helper: ' + r); });
   $('bkBody').addEventListener('click', e => { const b = e.target.closest('[data-bk]'); if (b) { backUp([b.dataset.bk], false).then(drawBk); } });
