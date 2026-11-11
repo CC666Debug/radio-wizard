@@ -4024,7 +4024,7 @@ function unGarble(x) {
   // deskDir() looks like the web folder handle, so the web code below works unchanged.
   const deskFolders = !!(A && A.desktop && A.folderPick);
   const deskDir = path => ({
-    name: path.split(/[\/]/).filter(Boolean).pop() || path, desk: true,
+    name: path.split(/[\\/]/).filter(Boolean).pop() || path, desk: true,
     queryPermission: async () => 'granted', requestPermission: async () => 'granted',
     getFileHandle: async name => ({
       getFile: async () => ({ text: async () => { const r = await A.folderRead(name); if (!r || !r.ok) { const e = new Error('not there'); e.name = 'NotFoundError'; throw e; } return r.text; } }),
