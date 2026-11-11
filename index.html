@@ -558,6 +558,10 @@
   <h3>Backups</h3>
   <p class="hint" style="margin:0 0 8px">Markdown files in a folder you pick (an Obsidian vault works). Once backed up, each file keeps itself up to date. Restore adds what’s missing and never deletes.</p>
   <div id="bkBody"></div>
+  <div class="bkKind" style="display:block"><b>Helper</b> <small>(optional)</small>
+    <div class="hint" style="margin:2px 0 6px">Your own free helper (helper/ in RW's GitHub) keeps SoundCloud playing on speakers all night and keeps a copy of these backups for all your devices. Paste its link once on each device; it stays on this device only.</div>
+    <div class="row" style="margin:0"><input class="field" id="helperLink" type="password" placeholder="https://rw-helper.….workers.dev/?k=…" autocapitalize="off" autocomplete="off" style="flex:1"><button type="button" id="helperSave">Save</button></div>
+    <div class="hint" id="helperMsg" style="margin:4px 0 0"></div></div>
   <div class="row" style="justify-content:flex-start"><button type="button" class="main" id="bkAll">⬇️ Back up everything</button><button type="button" id="bkFolder" hidden>📁 Other folder</button><button type="button" id="bkRestore">⬆️ Restore files</button></div>
   <div class="row"><button type="button" class="main" id="bkClose">Close</button></div>
 </dialog>
@@ -595,7 +599,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.31.1';
+const VERSION = '1.32.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -698,6 +702,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const logLines = [];
 function diag(msg) {
+  msg = String(msg).replace(/([?&]k=)[^&\s]+/g, '$1…');   // the helper's password never goes in the log
   const t = new Date();
   const line = t.toTimeString().slice(0, 8) + '.' + String(t.getMilliseconds()).padStart(3, '0') + '  ' + msg;
   logLines.push(line);
@@ -2317,7 +2322,7 @@ async function bcQueueFill() {
       // when it would start: the rest of this song plus the ones queued before it
       let wait = Math.max(0, (bcTrack() && bcTrack().dur || 0) - (bcClock.start && !bcClock.paused ? (performance.now() - bcClock.start) / 1000 : bcClock.pos));
       for (let k = b.i + 1; k < j; k++) wait += b.queue[k].dur || 240;
-      if (t.sc && wait * 1000 > SC_LIFE - 60e3) {   // SoundCloud links die ~5 min after fetching: get it shortly before it starts
+      if (t.sc && !helperOk && wait * 1000 > SC_LIFE - 60e3) {   // SoundCloud links die ~5 min after fetching: get it shortly before it starts
         clearTimeout(b.qTimer);
         b.qTimer = setTimeout(bcQueueFill, Math.max(5e3, wait * 1000 - (SC_LIFE - 90e3)));
         break;
@@ -2556,9 +2561,25 @@ async function scTracks(item) {
   return list.filter(t => t.title).map((t, i) => scTrack(t, i + 1, item.title, 'sc:' + item.id));
 }
 // A fresh stream link for a song (AAC over HLS: plays on speakers and in the app).
+// The optional helper (helper/worker.js in your own free Cloudflare account): link saved on this device only
+// (rw_helper, never backed up, never logged).
+let helperOk = false;
+const helperLink = () => { try { const u = new URL(safeGet('rw_helper') || ''); const k = u.searchParams.get('k'); return k ? { base: u.origin, k } : null; } catch (e) { return null; } };
+const helperUrl = (path, q) => { const h = helperLink(); return h && h.base + path + '?k=' + encodeURIComponent(h.k) + (q || ''); };
+async function helperCheck() {
+  helperOk = false;
+  const u = helperUrl('/ping');
+  if (!u) return 'none';
+  try { const r = await fetch(u, { cache: 'no-store' }); helperOk = r.ok && (await r.text()) === 'ok'; return helperOk ? 'ok' : r.status === 403 ? 'key' : 'bad'; }
+  catch (e) { return 'bad'; }
+}
 const SC_LIFE = 270e3;
 async function scResolve(t) {
-  if (t.url && t.exp - Date.now() > 120e3) return t;
+  if (t.url && t.exp - Date.now() > 120e3 && (t.exp !== Infinity || helperOk)) return t;
+  if (helperOk) {   // a link that never runs out: the helper fetches a fresh one whenever it's opened
+    t.url = helperUrl('/sc/' + t.sc); t.mime = 'application/x-mpegURL'; t.exp = Infinity;
+    return t;
+  }
   const d = await scGet(SC_API + '/tracks/' + t.sc);
   const tr = (d.media && d.media.transcodings) || [];
   const pick = tr.find(c => c.format.protocol === 'hls' && /mp4a|aac/.test(c.format.mime_type) && /160/.test(c.preset))
@@ -4257,12 +4278,51 @@ function unGarble(x) {
     }
     return out;
   }
-  const write = k => androidFolders ? writeAndroid(k) : writeWeb(k);
+  const write = k => { if (helperOk) cloudWrite(k); if (folderOk) androidFolders ? writeAndroid(k) : writeWeb(k); };
+  // The helper keeps the same files too (every device's), so devices sync through it without a shared folder.
+  let cloudV = +safeGet('rw_cloud_v') || 0, cloudFiles = null;
+  const cloudTimers = {};
+  function cloudWrite(k) {
+    clearTimeout(cloudTimers[k]);
+    cloudTimers[k] = setTimeout(async () => {   // a burst of changes = one save (the free plan allows 1,000 a day)
+      const u = helperUrl('/file/' + fileName(k)); if (!u) return;
+      try { const r = await fetch(u, { method: 'POST', body: K[k].text(), headers: { 'Content-Type': 'text/plain' } }); if (!r.ok) diag('helper backup ' + fileName(k) + ': ' + r.status); }
+      catch (e) { diag('helper backup failed: ' + e.message); }
+    }, 8000);
+  }
+  // Fresh files from the helper, or null when nothing changed since last time.
+  async function cloudRead(all) {
+    const u = helperUrl('/files', '&app=radiowizard' + (all ? '' : '&v=' + cloudV)); if (!u) return null;
+    const r = await fetch(u, { cache: 'no-store' });
+    if (!r.ok) throw new Error('helper ' + r.status);
+    const d = await r.json();
+    if (!d.files) return null;
+    cloudV = d.v; safeSet('rw_cloud_v', String(cloudV)); cloudFiles = d.files;
+    return d.files;
+  }
+  async function cloudSync(all) {
+    if (!helperOk) return 0;
+    let n = 0;
+    try {
+      const files = await cloudRead(all);
+      if (!files) return 0;
+      for (const k of KINDS) {
+        const texts = allNames(k).map(x => files[x] || '');
+        const mine = files[fileName(k)];
+        const c = texts.some(Boolean) ? link(k, texts) : 0;
+        n += c;
+        if (on[k] && (c || mine !== K[k].text())) write(k);   // this device's file is missing or behind there
+      }
+      if (n) diag('helper sync: ' + n + ' changed');
+    } catch (e) { diag('helper sync failed: ' + e.message); }
+    return n;
+  }
 
   // Called after every change to saved songs, favorites or playlists.
   autoSave = async (k = 'songs') => {
     if (!on[k]) return;
-    if (folderOk) { write(k); return; }
+    if (helperOk) cloudWrite(k);
+    if (folderOk) { androidFolders ? writeAndroid(k) : writeWeb(k); return; }
     if (!webDir) return;
     try { if (await webDir.requestPermission({ mode: 'readwrite' }) !== 'granted') return; folderOk = true; for (const j of KINDS) if (on[j]) { link(j, await readWeb(webDir, j)); } writeWeb(k); }
     catch (e) { diag('auto-save failed: ' + e.message); }
@@ -4368,11 +4428,12 @@ function unGarble(x) {
   // back to the front, and once a minute while it's on screen. Only rewrites this device's file if something changed.
   let syncing = false;
   const syncAll = async () => {
-    if (!folderOk || syncing || document.hidden) return;
+    if ((!folderOk && !helperOk) || syncing || document.hidden) return;
     syncing = true;
+    await cloudSync(false);
     try {
       for (const k of KINDS) {
-        if (!on[k]) continue;
+        if (!on[k] || !folderOk) continue;
         const texts = androidFolders ? await readAndroidSlow(k) : webDir ? await readWeb(webDir, k) : [];
         if (link(k, texts)) write(k);
       }
@@ -4389,10 +4450,22 @@ function unGarble(x) {
   // Backups dialog (footer): everything at once, or one kind.
   const drawBk = () => {
     $('bkBody').innerHTML = KINDS.map(k => '<div class="bkKind"><div><b>' + K[k].what[0].toUpperCase() + K[k].what.slice(1) + '</b> · ' + K[k].count()
-      + '<br><small>' + fileName(k) + (on[k] && folderOk ? ' · keeps itself up to date' : '') + '</small></div><button type="button" data-bk="' + k + '">⬇️ Back up</button></div>').join('');
+      + '<br><small>' + fileName(k) + (on[k] && (folderOk || helperOk) ? ' · keeps itself up to date' + (helperOk ? ' (helper' + (folderOk ? ' + folder' : '') + ')' : '') : '') + '</small></div><button type="button" data-bk="' + k + '">⬇️ Back up</button></div>').join('');
     $('bkFolder').hidden = !canPick;
   };
-  $('backupsLink').addEventListener('click', e => { e.preventDefault(); drawBk(); $('bkDlg').showModal(); });
+  const helperSay = r => { $('helperMsg').textContent = { ok: 'Connected ✓ SoundCloud on speakers and these backups go through your helper.', key: 'The helper says the password in that link is wrong.', bad: 'Couldn’t reach the helper. Check the link.', none: '' }[r] || ''; };
+  $('helperSave').addEventListener('click', async () => {
+    const v = $('helperLink').value.trim();
+    if (!v) { safeSet('rw_helper', ''); helperOk = false; helperSay('none'); $('helperMsg').textContent = 'Helper off on this device.'; return; }
+    try { const u = new URL(v); if (!u.searchParams.get('k')) throw 0; } catch (e) { $('helperMsg').textContent = 'That doesn’t look like a helper link (it ends in ?k=…).'; return; }
+    safeSet('rw_helper', v);
+    $('helperMsg').textContent = 'Checking…';
+    const r = await helperCheck(); helperSay(r);
+    if (r === 'ok') { for (const k of KINDS) if (!on[k]) { on[k] = true; safeSet('rw_bk_' + k, 't'); } await cloudSync(true); drawBk(); helperSay(r); }
+  });
+  $('backupsLink').addEventListener('click', e => { e.preventDefault(); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
+  // At start: check the helper, then sync through it.
+  helperCheck().then(r => { if (r === 'ok') setTimeout(() => cloudSync(false), 2500); else if (r !== 'none') diag('helper: ' + r); });
   $('bkBody').addEventListener('click', e => { const b = e.target.closest('[data-bk]'); if (b) { backUp([b.dataset.bk], false).then(drawBk); } });
   $('bkAll').addEventListener('click', () => backUp(KINDS, false).then(drawBk));
   $('bkFolder').addEventListener('click', () => backUp(KINDS, true).then(drawBk));
