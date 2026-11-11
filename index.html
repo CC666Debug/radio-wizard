@@ -38,7 +38,7 @@
   :root[data-mode="light"] { --accent-ink: #ffffff; }
   [hidden] { display: none !important; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; }
+  html, body { margin: 0; overflow-x: clip; }   /* nothing may make the page wider than the screen: it cancels the mini player's slide */
   body {
     background-color: var(--bg);
     background-image:
@@ -68,15 +68,17 @@
   .titleRow { display: flex; align-items: center; gap: 10px; }
   .logo { width: 38px; height: 38px; border-radius: 10px; flex: none; }
   h1 {
-    margin: 0; flex: 1; font: 700 1.35rem/1 "Cinzel Decorative", Georgia, serif; letter-spacing: .5px;
+    margin: 0; flex: 1 1 auto; min-width: 0; white-space: nowrap; font: 700 clamp(.8rem, 4.6vw, 1.35rem)/1 "Cinzel Decorative", Georgia, serif; letter-spacing: .5px;
     background: linear-gradient(90deg, var(--gold), var(--accent) 55%, var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .castBtn {
-    display: flex; align-items: center; gap: 6px; max-width: 46%;
+    display: flex; align-items: center; gap: 6px; max-width: 46%; flex: 0 1 auto;
     border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 12px; cursor: pointer;
   }
   .castBtn svg { width: 20px; height: 20px; flex: none; }
-  .castBtn span { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .castBtn span { font-size: .85rem; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: normal; text-align: left; }   /* long speaker names go onto a 2nd line */
+  @media (max-width: 480px) { .titleRow { gap: 6px; } .titleRow .iconBtn { padding: 4px; } .castBtn { padding: 6px 10px; max-width: 50%; } .castBtn span { font-size: .78rem; } }
+  @media (max-width: 400px) { .castBtn { max-width: 40%; } #bar .row { gap: 0; } #bar .row .iconBtn { padding: 5px; } #bar .row .heart { padding: 4px 4px; } }
   .castBtn.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 12px color-mix(in srgb, var(--accent-2) 25%, transparent); }
   .castBtn.nudge { animation: nudge 1s ease-in-out infinite alternate; }
   @keyframes nudge { to { box-shadow: 0 0 18px var(--glow); border-color: var(--accent); } }
@@ -412,8 +414,8 @@
   .secBox > [data-sec] { min-width: 0; }
   .secHint { color: var(--muted); font-size: .85rem; margin: 4px 2px; list-style: none; }
   .songHits h4 { margin: 14px 2px 6px; color: var(--muted); font-size: .85rem; font-weight: 600; }
-  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 14px; }
-  .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr)); gap: 6px; margin-bottom: 14px; }
+  .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; font-size: .88rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }   /* one line, same size in every box */
   .sw span { width: 18px; height: 18px; border-radius: 50%; background: var(--c); flex: none; border: 1px solid rgba(128, 128, 128, .35); }
   .sw.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
   .sw.custom input { width: 24px; height: 24px; border: 0; padding: 0; background: none; cursor: pointer; }
@@ -601,7 +603,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.35.1';
+const VERSION = '1.35.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -3582,6 +3584,18 @@ let barBusy = false;
 setInterval(() => { if (barBusy) renderBar(); }, 1000);
 const secsSince = t => t ? ' ' + Math.max(0, Math.round((Date.now() - t) / 1000)) + 's' : '';
 function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.classList.toggle('live', !!live); }
+
+// The RadioWizard title shrinks to the room the buttons leave it (a long speaker name on a phone), never cut off.
+{
+  const h = document.querySelector('header.top h1');
+  const fit = () => {
+    h.style.fontSize = '';
+    const full = parseFloat(getComputedStyle(h).fontSize);
+    for (let i = 0, f = full; i < 4 && h.scrollWidth > h.clientWidth + 1 && f > 9; i++) { f = Math.max(9, f * h.clientWidth / h.scrollWidth - .4); h.style.fontSize = f + 'px'; }
+  };
+  new ResizeObserver(() => requestAnimationFrame(fit)).observe(h);
+  document.fonts && document.fonts.ready.then(fit);
+}
 
 // ── Mini player ── (Four Realms' code)
 // The moment the list starts moving up under the player, the top shrinks to one slim bar, and the list rides up
