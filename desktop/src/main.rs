@@ -240,7 +240,9 @@ fn bandcamp_logout() {
 // backup-folder.txt. The page reads and writes its .md files through these, like the Android app.
 
 fn backup_dir() -> Option<PathBuf> {
-    fs::read_to_string(app_dir().join("backup-folder.txt")).ok().map(|s| PathBuf::from(s.trim())).filter(|p| p.is_dir())
+    let p = PathBuf::from(fs::read_to_string(app_dir().join("backup-folder.txt")).ok()?.trim());
+    if !p.is_dir() { fs::create_dir_all(&p).ok()?; }   // deleted since it was picked: make it again
+    Some(p)
 }
 fn backup_file(name: &str) -> Option<PathBuf> {
     let ok = !name.is_empty() && name.ends_with(".md") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_');
