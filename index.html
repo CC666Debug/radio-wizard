@@ -562,7 +562,7 @@
     <div class="hint" style="margin:2px 0 6px">Your own free helper (helper/ in RW's GitHub) keeps SoundCloud playing on speakers all night and keeps a copy of these backups for all your devices. Paste its link once on each device; it stays on this device only.</div>
     <div class="row" style="margin:0"><input class="field" id="helperLink" type="password" placeholder="https://rw-helper.….workers.dev/?k=…" autocapitalize="off" autocomplete="off" style="flex:1"><button type="button" id="helperSave">Save</button></div>
     <div class="hint" id="helperMsg" style="margin:4px 0 0"></div></div>
-  <div class="row" style="justify-content:flex-start"><button type="button" class="main" id="bkAll">⬇️ Back up everything</button><button type="button" id="bkFolder" hidden>📁 Other folder</button><button type="button" id="bkRestore">⬆️ Restore files</button></div>
+  <div class="row" style="justify-content:flex-start"><button type="button" class="main" id="bkAll">⬇️ Back up everything</button><button type="button" id="bkFolder" hidden>📁 Other folder</button><button type="button" id="bkNoFolder" hidden>🚫 Stop folder</button><button type="button" id="bkRestore">⬆️ Restore files</button></div>
   <div class="row"><button type="button" class="main" id="bkClose">Close</button></div>
 </dialog>
 
@@ -599,7 +599,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.32.0';
+const VERSION = '1.32.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4328,7 +4328,9 @@ function unGarble(x) {
     catch (e) { diag('auto-save failed: ' + e.message); }
   };
   // At start: pick up the remembered folder; take back what an empty app is missing.
+  const noFolder = () => safeGet('rw_bk_nofolder') === 't';   // folder backups turned off on this device (🚫 Stop folder)
   (async () => {
+    if (noFolder()) return;
     if (androidFolders) {
       await new Promise(ok => setTimeout(ok, 1200));   // let the page draw first
       try { if (!JSON.parse(A.readBackup(fileName('songs'))).ok) return; } catch (e) { return; }
@@ -4354,7 +4356,7 @@ function unGarble(x) {
   };
   window.onAndroidBackup = r => {
     if (r.where === 'picked') {
-      folderOk = true;
+      folderOk = true; safeSet('rw_bk_nofolder', '');
       const kinds = pending.length ? pending : ['songs']; pending = [];
       let took = 0;
       for (const k of kinds) { took += link(k, readAndroid(k)); writeAndroid(k); }
@@ -4376,14 +4378,14 @@ function unGarble(x) {
     }
     if ('showDirectoryPicker' in window) {
       try {
-        let dir = pickNew ? null : webDir || await db('readonly', kv => kv.get('dir')).catch(() => null);
+        let dir = pickNew || noFolder() ? null : webDir || await db('readonly', kv => kv.get('dir')).catch(() => null);
         if (dir && await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') dir = null;
         const picked = !dir;
         if (picked) {
           dir = await window.showDirectoryPicker({ id: 'rw-backup', mode: 'readwrite', startIn: 'documents' });
           await db('readwrite', kv => kv.put(dir, 'dir')).catch(() => {});
         }
-        webDir = dir; folderOk = true;
+        webDir = dir; folderOk = true; safeSet('rw_bk_nofolder', '');
         let took = 0;
         for (const k of kinds) { took += link(k, await readWeb(dir, k)); await writeWeb(k); }
         done(kinds, dir.name, took);
@@ -4452,8 +4454,17 @@ function unGarble(x) {
     $('bkBody').innerHTML = KINDS.map(k => '<div class="bkKind"><div><b>' + K[k].what[0].toUpperCase() + K[k].what.slice(1) + '</b> · ' + K[k].count()
       + '<br><small>' + fileName(k) + (on[k] && (folderOk || helperOk) ? ' · keeps itself up to date' + (helperOk ? ' (helper' + (folderOk ? ' + folder' : '') + ')' : '') : '') + '</small></div><button type="button" data-bk="' + k + '">⬇️ Back up</button></div>').join('');
     $('bkFolder').hidden = !canPick;
+    $('bkNoFolder').hidden = !folderOk;
   };
-  const helperSay = r => { $('helperMsg').textContent = { ok: 'Connected ✓ SoundCloud on speakers and these backups go through your helper.', key: 'The helper says the password in that link is wrong.', bad: 'Couldn’t reach the helper. Check the link.', none: '' }[r] || ''; };
+  // Stop writing to the folder on this device (its files stay there). ⬇️ Back up picks a folder again.
+  $('bkNoFolder').addEventListener('click', async () => {
+    folderOk = false; webDir = null; safeSet('rw_bk_nofolder', 't');
+    await db('readwrite', kv => kv.delete('dir')).catch(() => {});
+    $('backupMsg').textContent = '';
+    showNotice('Folder backups are off on this device. The files already there stay put' + (helperOk ? '; your helper keeps backing up.' : '.'));
+    drawBk();
+  });
+  const helperSay = r => { $('helperMsg').style.color = r === 'ok' ? 'var(--accent)' : ''; $('helperMsg').textContent = { ok: 'Connected ✓ SoundCloud on speakers and these backups go through your helper.', key: 'The helper says the password in that link is wrong.', bad: 'Couldn’t reach the helper. Check the link.', none: '' }[r] || ''; };
   $('helperSave').addEventListener('click', async () => {
     const v = $('helperLink').value.trim();
     if (!v) { safeSet('rw_helper', ''); helperOk = false; helperSay('none'); $('helperMsg').textContent = 'Helper off on this device.'; return; }
