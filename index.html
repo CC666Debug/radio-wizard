@@ -603,7 +603,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.36.0';
+const VERSION = '1.36.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -705,16 +705,22 @@ const unent = s => { const t = document.createElement('textarea'); t.innerHTML =
 const https = u => !u ? '' : u.startsWith('//') ? 'https:' + u : u;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const logLines = [];
+// Kept on the device too, so closing and reopening RW doesn't empty it; still never more than 600 lines.
+const logLines = (() => { try { return JSON.parse(localStorage.getItem('rw_diag') || '[]').slice(-600); } catch (e) { return []; } })();
+let logSaveT = 0;
+const logSave = () => { clearTimeout(logSaveT); try { localStorage.setItem('rw_diag', JSON.stringify(logLines)); } catch (e) {} };
+addEventListener('pagehide', logSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) logSave(); });
 function diag(msg) {
   msg = String(msg).replace(/([?&]k=)[^&\s]+/g, '$1…');   // the helper's password never goes in the log
   const t = new Date();
   const line = t.toTimeString().slice(0, 8) + '.' + String(t.getMilliseconds()).padStart(3, '0') + '  ' + msg;
   logLines.push(line);
   if (logLines.length > 600) logLines.splice(0, logLines.length - 600);
+  clearTimeout(logSaveT); logSaveT = setTimeout(logSave, 1500);
 }
 const NATIVE = !!(window.AndroidCast && window.AndroidCast.httpGet);
-diag('── opened · RadioWizard v' + VERSION + ' · ' + (NATIVE ? (window.AndroidCast.desktop ? 'RadioWizard Windows app' : 'RadioWizard Android app') : matchMedia('(display-mode: standalone)').matches ? 'app window' : 'browser tab') + ' · ' + navigator.userAgent);
+diag('── opened ' + new Date().toLocaleDateString() + ' · RadioWizard v' + VERSION + ' · ' + (NATIVE ? (window.AndroidCast.desktop ? 'RadioWizard Windows app' : 'RadioWizard Android app') : matchMedia('(display-mode: standalone)').matches ? 'app window' : 'browser tab') + ' · ' + navigator.userAgent);
 window.addEventListener('error', e => diag('JS error: ' + e.message + ' @' + (e.lineno || '?')));
 window.addEventListener('unhandledrejection', e => diag('unhandled: ' + (e.reason && e.reason.message || e.reason)));
 
@@ -4644,10 +4650,10 @@ diagDlg.addEventListener('click', e => { if (e.target === diagDlg) diagDlg.close
 let diagClearArm = 0, diagUndo = null, diagUndoT = 0;
 $('diagClear').addEventListener('click', () => {
   const b = $('diagClear'), nl = String.fromCharCode(10);
-  if (diagUndo) { logLines.splice(0, logLines.length, ...diagUndo); diagUndo = null; clearTimeout(diagUndoT); b.textContent = 'Clear log'; $('diagText').value = logLines.join(nl); return; }
+  if (diagUndo) { logLines.splice(0, logLines.length, ...diagUndo); diagUndo = null; clearTimeout(diagUndoT); b.textContent = 'Clear log'; logSave(); $('diagText').value = logLines.join(nl); return; }
   if (Date.now() - diagClearArm > 4000) { diagClearArm = Date.now(); b.textContent = 'Tap again to clear'; setTimeout(() => { if (!diagUndo && Date.now() - diagClearArm >= 4000) b.textContent = 'Clear log'; }, 4100); return; }
   diagClearArm = 0; diagUndo = logLines.slice();
-  logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); $('diagText').value = logLines.join(nl);
+  logLines.length = 0; diag('── log cleared · RadioWizard v' + VERSION); logSave(); $('diagText').value = logLines.join(nl);
   b.textContent = '↶ Undo clear';
   diagUndoT = setTimeout(() => { diagUndo = null; b.textContent = 'Clear log'; }, 15000);
 });
