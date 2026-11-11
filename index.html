@@ -601,7 +601,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.35.0';
+const VERSION = '1.35.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4322,10 +4322,18 @@ function unGarble(x) {
     const kinds = [...cloudDue]; cloudDue.clear();
     for (const k of kinds) {
       const u = helperUrl('/file/' + fileName(k)); if (!u) return;
-      try { const r = await fetch(u, { method: 'POST', body: K[k].text(), headers: { 'Content-Type': 'text/plain' }, keepalive: true }); if (!r.ok) diag('helper backup ' + fileName(k) + ': ' + r.status); }
+      // keepalive lets a send finish while RW closes, but browsers refuse it over 64 KB (favorites, playlists and
+      // saved songs are bigger), so big files go as normal sends. A big one cut off by closing is re-sent at the next start.
+      const body = K[k].text();
+      try {
+        const r = await fetch(u, { method: 'POST', body, headers: { 'Content-Type': 'text/plain' }, keepalive: new Blob([body]).size < 60000 });
+        if (!r.ok) { diag('helper backup ' + fileName(k) + ': ' + r.status); cloudDue.add(k); continue; }
+        if (cloudFiles) cloudFiles[fileName(k)] = body;
+      }
       catch (e) { diag('helper backup failed: ' + e.message); cloudDue.add(k); }
     }
     nowBtn();
+    try { if ($('bkDlg').open) drawBk(); } catch (e) {}
   }
   const nowBtn = () => { const b = $('helperNow'); if (b) { b.hidden = !(helperOk && cloudDue.size); b.disabled = false; b.textContent = '⬆️ Send now'; } };
   function cloudWrite(k) {
@@ -4503,10 +4511,25 @@ function unGarble(x) {
     setTimeout(syncAll, 1500);
   });
   setInterval(syncAll, 60000);
+  // When each device's copy last reached the helper (from the 'Updated …' line in its file there).
+  const DEV_NAMES = { pc: 'PC', mac: 'Mac', tablet: 'Tablet', phone: 'Phone' };
+  const helperTimes = k => {
+    if (!cloudFiles) return 'checking…';
+    const seen = DEVICES.filter(d => KINDS.some(j => cloudFiles[fileName(j, d)]));
+    if (!seen.includes(device())) seen.push(device());
+    return seen.map(d => {
+      const m = String(cloudFiles[fileName(k, d)] || '').match(/^Updated (.+?) · /m);
+      let t = 'not yet';
+      if (m) { const x = new Date(m[1]); t = isNaN(x) ? m[1] : day(x) === day(Date.now()) ? x.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : x.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + x.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+      if (d === device() && cloudDue.has(k)) t += ' (change waiting)';
+      return (d === device() ? '<b>' + DEV_NAMES[d] + '</b>' : DEV_NAMES[d]) + ' ' + t;
+    }).join(' · ');
+  };
   // Backups dialog (footer): everything at once, or one kind.
   const drawBk = () => {
     $('bkBody').innerHTML = KINDS.map(k => '<div class="bkKind"><div><b>' + K[k].what[0].toUpperCase() + K[k].what.slice(1) + '</b> · ' + K[k].count()
-      + '<br><small>' + fileName(k) + (on[k] && (folderOk || helperOk) ? ' · keeps itself up to date' + (helperOk ? ' (helper' + (folderOk ? ' + folder' : '') + ')' : '') : '') + '</small></div><button type="button" data-bk="' + k + '">⬇️ Back up</button></div>').join('');
+      + '<br><small>' + fileName(k) + (on[k] && (folderOk || helperOk) ? ' · keeps itself up to date' + (helperOk ? ' (helper' + (folderOk ? ' + folder' : '') + ')' : '') : '') + '</small>'
+      + (helperOk ? '<br><small>Helper has: ' + helperTimes(k) + '</small>' : '') + '</div><button type="button" data-bk="' + k + '">⬇️ Back up</button></div>').join('');
     $('bkFolder').hidden = !canPick;
     $('bkNoFolder').hidden = !folderOk;
   };
@@ -4536,7 +4559,8 @@ function unGarble(x) {
   });
   $('helperEvery').addEventListener('change', () => { safeSet('rw_helper_every', $('helperEvery').value); if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = setTimeout(cloudFlush, cloudEvery()); } });
   $('bkBtn').addEventListener('click', () => $('backupsLink').click());   // 💾 at the top opens the same Backups box as the footer link
-  $('backupsLink').addEventListener('click', e => { e.preventDefault(); $('helperEvery').value = String(cloudEvery() / 1000); nowBtn(); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal(); });
+  $('backupsLink').addEventListener('click', e => { e.preventDefault(); $('helperEvery').value = String(cloudEvery() / 1000); nowBtn(); drawBk(); $('helperLink').value = safeGet('rw_helper') || ''; helperSay(helperOk ? 'ok' : safeGet('rw_helper') ? 'bad' : 'none'); $('bkDlg').showModal();
+    if (helperOk && !cloudFiles) cloudSync(true).then(() => { if ($('bkDlg').open) drawBk(); }); });
   // At start: check the helper, then sync through it.
   helperCheck().then(r => { if (r === 'ok') setTimeout(() => cloudSync(false), 2500); else if (r !== 'none') diag('helper: ' + r); });
   $('bkBody').addEventListener('click', e => { const b = e.target.closest('[data-bk]'); if (b) { backUp([b.dataset.bk], false).then(drawBk); } });
