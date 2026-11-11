@@ -603,7 +603,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.36.1';
+const VERSION = '1.36.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2517,15 +2517,26 @@ async function scKey(fresh) {
   diag('soundcloud key not found (' + page.status + ' ' + page.url + ')');
   throw new Error('Couldn’t reach SoundCloud.');
 }
+// Big answers (50 songs ≈ 165 KB) can arrive cut off when SoundCloud is slow: wait longer and ask again (twice).
 async function scGet(url) {
+  for (let a = 0; ; a++) {
+    try { return await scGetOnce(url); }
+    catch (e) {
+      if (a >= 2 || !/JSON|cut off|timed? ?out|Timeout/i.test(e.message)) throw e;
+      diag('soundcloud answer cut off (' + e.message + '), asking again: ' + url.replace(SC_API, '').slice(0, 60));
+      await sleep(800 * (a + 1));
+    }
+  }
+}
+async function scGetOnce(url) {
   for (let k = 0; k < 2; k++) {
     const id = await scKey(k > 0);
     const full = url + (url.includes('?') ? '&' : '?') + 'client_id=' + id;
-    let r = await get(full, { headers: { Accept: 'application/json' } });
+    let r = await get(full, { headers: { Accept: 'application/json' }, timeout: 30000 });
     if ((r.status === 401 || r.status === 403) && k === 0) continue;   // SoundCloud changed its key: find the new one
     // Signed in and still refused: ask again as nobody (public lists open fine that way). Never pops up the sign-in.
     if ((r.status === 401 || r.status === 403) && scSignedIn) {
-      const r2 = await get(full, { headers: { Accept: 'application/json', 'X-RW-NoAuth': '1' } });
+      const r2 = await get(full, { headers: { Accept: 'application/json', 'X-RW-NoAuth': '1' }, timeout: 30000 });
       diag('soundcloud refused the sign-in (' + r.status + ') → without it: ' + r2.status + ' ' + url.replace(SC_API, '').slice(0, 60));
       if (r2.status < 400) { scAuthLost(); r = r2; }
       else if (/\/me(\?|$)/.test(url)) scAuthLost();

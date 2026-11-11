@@ -95,9 +95,15 @@ fn request(a: &Value, follow: bool, timeout_ms: u64) -> Result<ureq::Response, S
 }
 
 fn read_up_to(r: ureq::Response, max: u64) -> Vec<u8> {
+    read_body(r, max).unwrap_or_default()
+}
+
+/// The whole answer, or an error if it was cut off on the way (slow server, time ran out), so the page
+/// never takes half an answer for all of it.
+fn read_body(r: ureq::Response, max: u64) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
-    let _ = r.into_reader().take(max).read_to_end(&mut out);
-    out
+    r.into_reader().take(max).read_to_end(&mut out).map_err(|e| format!("answer cut off: {e}"))?;
+    Ok(out)
 }
 
 #[tauri::command]
@@ -112,7 +118,9 @@ async fn http_get(args: String) -> Value {
                 let url = r.get_url().to_string();
                 let location = r.header("location").map(|s| s.to_string());
                 let ctype = r.header("content-type").unwrap_or("").to_string();
-                let text = if (300..400).contains(&status) { String::new() } else { String::from_utf8_lossy(&read_up_to(r, 3_000_000)).into_owned() };
+                let text = if (300..400).contains(&status) { String::new() } else {
+                    match read_body(r, 3_000_000) { Ok(b) => String::from_utf8_lossy(&b).into_owned(), Err(e) => return json!({ "error": e }) }
+                };
                 json!({ "status": status, "url": url, "location": location, "contentType": ctype, "text": text })
             }
             Err(e) => json!({ "error": e }),
