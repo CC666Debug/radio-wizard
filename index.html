@@ -599,7 +599,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.33.0';
+const VERSION = '1.33.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4329,6 +4329,7 @@ function unGarble(x) {
     cloudV = d.v; safeSet('rw_cloud_v', String(cloudV)); cloudFiles = d.files;
     return d.files;
   }
+  const sameish = t => String(t || '').replace(/^Updated .*$/m, '').trim();
   async function cloudSync(all) {
     if (!helperOk) return 0;
     let n = 0;
@@ -4340,7 +4341,8 @@ function unGarble(x) {
         const mine = files[fileName(k)];
         const c = texts.some(Boolean) ? link(k, texts) : 0;
         n += c;
-        if (on[k] && (c || mine !== K[k].text())) write(k);   // this device's file is missing or behind there
+        // this device's file is missing or behind there (the "Updated …" line always differs, so it doesn't count)
+        if (on[k] && (c || sameish(mine) !== sameish(K[k].text()))) write(k);
       }
       if (n) diag('helper sync: ' + n + ' changed');
     } catch (e) { diag('helper sync failed: ' + e.message); }
