@@ -1,11 +1,13 @@
-# Copy to wrangler.toml, then: npx wrangler kv namespace create FILES  (paste its id below)
-#                              npx wrangler secret put HELPER_KEY        (any long random password)
-#                              npx wrangler deploy
+# Copy to wrangler.toml, then:
+#   npx wrangler d1 create rw-files            (paste its database_id below)
+#   npx wrangler secret put HELPER_KEY         (any long random password)
+#   npx wrangler deploy
 name = "rw-helper"
 main = "worker.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
 
-[[kv_namespaces]]
-binding = "FILES"
-id = "PASTE-YOUR-KV-ID"
+[[d1_databases]]
+binding = "DB"
+database_name = "rw-files"
+database_id = "PASTE-YOUR-DATABASE-ID"

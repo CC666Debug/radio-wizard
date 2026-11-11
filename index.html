@@ -600,7 +600,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.34.0';
+const VERSION = '1.34.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4477,11 +4477,11 @@ function unGarble(x) {
   $('savedRestore').addEventListener('click', () => restoreFiles());
   // Keep in step with the other devices (Obsidian Sync drops their files in the folder): when the app comes
   // back to the front, and once a minute while it's on screen. Only rewrites this device's file if something changed.
-  let syncing = false;
+  let syncing = false, cloudAt = 0;
   const syncAll = async () => {
     if ((!folderOk && !helperOk) || syncing || document.hidden) return;
     syncing = true;
-    await cloudSync(false);
+    if (Date.now() - cloudAt > 290e3) { cloudAt = Date.now(); await cloudSync(false); }   // the helper: every 5 min (folder: every minute)
     try {
       for (const k of KINDS) {
         if (!on[k] || !folderOk) continue;
@@ -4495,6 +4495,7 @@ function unGarble(x) {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     document.body.style.opacity = '.999'; requestAnimationFrame(() => requestAnimationFrame(() => { document.body.style.opacity = ''; }));
+    cloudAt = 0;   // back in front: ask the helper right away too
     setTimeout(syncAll, 1500);
   });
   setInterval(syncAll, 60000);

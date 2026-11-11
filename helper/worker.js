@@ -7,7 +7,7 @@
 //   GET  /sc/<trackId>?k=KEY              → 302 to a fresh SoundCloud stream (HLS)
 //   GET  /files?k=KEY&app=radiowizard&v=N → { v, files: { name: text } } (just { v } when nothing changed since N)
 //   POST /file/<name>.md?k=KEY            → saves that backup file (the same Markdown the backup folder gets)
-// Backup files live in the Worker's own free storage (KV binding FILES), up to 1 MB each.
+// Backup files live in the Worker's own free D1 database (binding DB), up to 1 MB each.
 
 const SC_API = 'https://api-v2.soundcloud.com';
 const DESK = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' };
@@ -44,6 +44,29 @@ async function scStream(id) {
   return s.url;
 }
 
+// Backup files: one row per file in the Worker's own free D1 database (binding DB). One save = one row written.
+let tableMade = false;
+async function dbReady(env) {
+  if (tableMade) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS files (app TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (app, name))').run();
+  tableMade = true;
+}
+// Helpers made before the move kept their files in KV storage (binding FILES): copied over once, left in place.
+async function fromKv(env, app) {
+  let cursor, at = Date.now(), n = 0;
+  do {
+    const l = await env.FILES.list({ prefix: 'f:' + app + '-', cursor });
+    for (const key of l.keys) {
+      const text = await env.FILES.get(key.name);
+      if (text == null) continue;
+      await env.DB.prepare('INSERT OR IGNORE INTO files (app, name, text, at) VALUES (?, ?, ?, ?)').bind(app, key.name.slice(2 + app.length + 1), text, at).run();
+      n++;
+    }
+    cursor = l.list_complete ? null : l.cursor;
+  } while (cursor);
+  return n ? at : 0;
+}
+
 export default {
   async fetch(req, env) {
     const u = new URL(req.url);
@@ -53,27 +76,26 @@ export default {
       if (u.pathname === '/ping') return new Response('ok', { headers: cors });
       const sc = u.pathname.match(/^\/sc\/(\d+)$/);
       if (sc) return new Response(null, { status: 302, headers: { ...cors, Location: await scStream(sc[1]) } });
-      if (u.pathname === '/files' && env.FILES) {
+      if (u.pathname === '/files' && env.DB) {
         const app = (u.searchParams.get('app') || '').replace(/[^a-z0-9]/g, '');
         if (!app) return new Response('no app', { status: 400, headers: cors });
-        const v = +(await env.FILES.get('ver:' + app)) || 0;
+        await dbReady(env);
+        let v = (await env.DB.prepare('SELECT MAX(at) AS v FROM files WHERE app = ?').bind(app).first('v')) || 0;
+        if (!v && env.FILES) v = await fromKv(env, app);   // first run after the move from KV storage: copy those files in
         const json = { ...cors, 'Content-Type': 'application/json' };
         if (u.searchParams.get('v') == String(v)) return new Response(JSON.stringify({ v }), { headers: json });
+        const { results } = await env.DB.prepare('SELECT name, text FROM files WHERE app = ?').bind(app).all();
         const files = {};
-        let cursor;
-        do {
-          const l = await env.FILES.list({ prefix: 'f:' + app + '-', cursor });
-          for (const key of l.keys) files[key.name.slice(2)] = await env.FILES.get(key.name);
-          cursor = l.list_complete ? null : l.cursor;
-        } while (cursor);
+        for (const r of results) files[app + '-' + r.name] = r.text;
         return new Response(JSON.stringify({ v, files }), { headers: json });
       }
       const f = u.pathname.match(/^\/file\/([a-z0-9]+)-([a-z0-9-]+\.md)$/);
-      if (f && req.method === 'POST' && env.FILES) {
+      if (f && req.method === 'POST' && env.DB) {
         const text = await req.text();
         if (text.length > 1e6) return new Response('too big', { status: 413, headers: cors });
-        await env.FILES.put('f:' + f[1] + '-' + f[2], text);
-        await env.FILES.put('ver:' + f[1], String(Date.now()));
+        await dbReady(env);
+        await env.DB.prepare('INSERT INTO files (app, name, text, at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (app, name) DO UPDATE SET text = ?3, at = ?4')
+          .bind(f[1], f[2], text, Date.now()).run();
         return new Response('ok', { headers: cors });
       }
       return new Response('not found', { status: 404, headers: cors });
