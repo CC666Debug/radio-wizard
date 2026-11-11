@@ -603,7 +603,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.35.2';
+const VERSION = '1.35.3';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -624,7 +624,8 @@ window.addEventListener('keydown', e => { if (e.key === 'BrowserBack' || (e.altK
 const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
-const SET_KEYS = ['rw_palette', 'rw_mode', 'rw_accent', 'rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort', 'rw_bcsort'];
+// Theme, accent and light/dark stay per device (user wants different looks on each).
+const SET_KEYS = ['rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort', 'rw_bcsort'];
 let rwBooted = false, setTimer = 0;
 setTimeout(() => { rwBooted = true; }, 0);
 function setTouch(k) {
