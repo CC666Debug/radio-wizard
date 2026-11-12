@@ -292,6 +292,25 @@ fn backup_forget() {
 
 /* ---------------- SoundCloud sign-in ---------------- */
 
+/// Tracker / analytics hosts the SoundCloud sign-in window never reaches (sign-in works without them).
+const TRACKER_HOSTS: &[&str] = &[
+    "segment.io", "segment.com", "segmentapis.com",
+    "google-analytics.com", "googletagmanager.com", "googleadservices.com", "doubleclick.net", "googlesyndication.com",
+    "facebook.net",
+    "scorecardresearch.com", "quantserve.com", "quantcount.com", "comscore.com",
+    "hotjar.com", "hotjar.io", "amplitude.com", "mixpanel.com", "branch.io", "app.link",
+    "adnxs.com", "criteo.com", "criteo.net", "taboola.com", "outbrain.com", "pubmatic.com", "rubiconproject.com",
+    "moatads.com", "chartbeat.com", "chartbeat.net", "newrelic.com", "nr-data.net",
+    "browser-intake-datadoghq.com", "browser-intake-datadoghq.eu", "bat.bing.com", "clarity.ms",
+    "analytics.tiktok.com", "tr.snapchat.com", "ads-twitter.com", "analytics.twitter.com", "ct.pinterest.com",
+];
+
+fn tracker_block_args() -> String {
+    let rules: Vec<String> = TRACKER_HOSTS.iter().flat_map(|h| [format!("MAP {h} ~NOTFOUND"), format!("MAP *.{h} ~NOTFOUND")]).collect();
+    // Tauri's own default flags, plus the block list.
+    format!("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --host-resolver-rules=\"{}\"", rules.join(", "))
+}
+
 #[tauri::command]
 async fn soundcloud_login(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("sclogin") {
@@ -302,6 +321,10 @@ async fn soundcloud_login(app: tauri::AppHandle) -> Result<(), String> {
     WebviewWindowBuilder::new(&app, "sclogin", WebviewUrl::External(url))
         .title("Sign in to SoundCloud")
         .inner_size(520.0, 760.0)
+        // Trackers (Segment and co.) can't even be looked up from this window, so nothing is sent to them.
+        // Different browser args need their own profile folder; the sign-in itself is kept in soundcloud-token.txt.
+        .data_directory(app_dir().join("sc-signin"))
+        .additional_browser_args(&tracker_block_args())
         .build()
         .map_err(err)?;
     // Watch for SoundCloud's "oauth_token" cookie (set once you're signed in), then keep it and close.

@@ -1,6 +1,6 @@
 [package]
 name = "radio-wizard"
-version = "1.36.2"
+version = "1.36.3"
 description = "RadioWizard: find any radio station, play your Bandcamp collection, cast to Nest speakers"
 edition = "2021"
 
