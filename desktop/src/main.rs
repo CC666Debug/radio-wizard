@@ -285,6 +285,16 @@ fn backup_write(name: String, text: String) -> bool {
     backup_file(&name).map(|f| fs::write(f, text).is_ok()).unwrap_or(false)
 }
 
+/// "Save log": a normal Save as window; answers the full path, or nothing when cancelled.
+#[tauri::command]
+async fn save_as(window: tauri::WebviewWindow, name: String, text: String) -> Option<String> {
+    let f = rfd::AsyncFileDialog::new().set_title("Save the RadioWizard log").set_parent(&window)
+        .set_file_name(&name).add_filter("Markdown", &["md"]).save_file().await?;
+    let path = f.path().to_path_buf();
+    fs::write(&path, text).ok()?;
+    Some(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn backup_forget() {
     let _ = fs::remove_file(app_dir().join("backup-folder.txt"));
@@ -894,7 +904,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState { devices, cast: Mutex::new(Cast { tx: None, status: Arc::new(Mutex::new(Status::default())) }) })
         .invoke_handler(tauri::generate_handler![
-            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, backup_pick, backup_folder, backup_read, backup_write, backup_forget, cast_devices, cast_state, cast_connect, cast_load, cast_queue_add, cast_media, cast_volume, cast_end
+            http_get, probe, icy, open_url, bandcamp_login, bandcamp_logout, soundcloud_login, soundcloud_logout, backup_pick, backup_folder, backup_read, backup_write, backup_forget, save_as, cast_devices, cast_state, cast_connect, cast_load, cast_queue_add, cast_media, cast_volume, cast_end
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

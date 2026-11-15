@@ -595,6 +595,7 @@
     <button type="button" id="diagClear" style="margin-right:auto">Clear log</button>
     <button type="button" id="gcBtn">Don’t count me</button>
     <button type="button" id="diagCopy">Copy log</button>
+    <button type="button" id="diagSave">Save log</button>
     <button type="button" class="main" id="diagClose">Close</button>
   </div>
 </dialog>
@@ -603,7 +604,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.36.3';
+const VERSION = '1.37.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1737,22 +1738,20 @@ async function loadOnSpeaker(st, links) {
     links.i++; loadOnSpeaker(st, links);
   });
 }
-// The speaker's standard player often sits "buffering" before the sound starts; a quick pause + play gets it going.
-const NUDGE_AFTER = 500, NUDGE_WINDOW = 60000;
+// 1.37.0: NO more pause + play while the speaker buffers. Nest Audios and speaker groups now take a few seconds
+// to start a station; the old nudge (0.5 s) hit them mid-start and left them "playing" with no sound (log 2026-11-15:
+// every silent station had been nudged, the ones that worked had started in under 0.5 s). Now we only note a long wait.
+const NUDGE_AFTER = 15000, NUDGE_WINDOW = 60000;
 let nudgeUntil = 0, nudges = 0, nudgeTimer = null;
 function kickStart() { nudgeUntil = Date.now() + NUDGE_WINDOW; nudges = 0; watchStall(); }
 function watchStall() {
   clearTimeout(nudgeTimer);
   const PS = chrome.cast.media.PlayerState;
-  if (!player || Date.now() > nudgeUntil || nudges >= 4 || player.playerState !== PS.BUFFERING) return;
+  if (!player || Date.now() > nudgeUntil || nudges >= 1 || player.playerState !== PS.BUFFERING) return;
   nudgeTimer = setTimeout(() => {
-    const session = ctx.getCurrentSession();
-    const media = session && session.getMediaSession();
-    if (!media || player.playerState !== PS.BUFFERING) return;
+    if (player.playerState !== PS.BUFFERING) return;
     nudges++;
-    diag('nudge ' + nudges + ': speaker stalled buffering, pause + play');
-    const done = () => renderBar();
-    media.pause(new chrome.cast.media.PauseRequest(), () => media.play(new chrome.cast.media.PlayRequest(), done, done), done);
+    diag('speaker still buffering after ' + NUDGE_AFTER / 1000 + ' s (left alone)');
   }, NUDGE_AFTER);
 }
 let lastSpeakerState = null;
@@ -4654,6 +4653,37 @@ $('diagCopy').addEventListener('click', () => {
   (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).catch(() => document.execCommand('copy'));
   $('diagCopy').textContent = 'Copied';
   setTimeout(() => $('diagCopy').textContent = 'Copy log', 1500);
+});
+// Save log: a Markdown file wherever the user picks (Android's clipboard cuts long logs short).
+function diagMd() {
+  const nl = String.fromCharCode(10), fence = '`'.repeat(3);
+  const dev = window.AndroidCast ? (window.AndroidCast.desktop ? 'Windows app' : 'Android app') : 'website';
+  return '# RadioWizard log' + nl + nl + '- Version: ' + VERSION + nl + '- Device: ' + dev + nl + '- Saved: ' + new Date().toString() + nl + '- Lines: ' + logLines.length + nl + nl + fence + nl + logLines.join(nl) + nl + fence + nl;
+}
+function diagName() { const d = new Date(), z = n => String(n).padStart(2, '0'); return 'radiowizard-log-' + d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + '.md'; }
+function diagSaved(ok, where) {
+  const b = $('diagSave');
+  b.textContent = ok ? 'Saved' : (where === 'cancel' ? 'Save log' : 'Couldn’t save');
+  if (ok) showNotice('Log saved' + (where ? ' in ' + where : '') + '.');
+  setTimeout(() => b.textContent = 'Save log', 2000);
+}
+window.onAndroidSaveAs = r => diagSaved(!!r.ok, r.where || '');
+$('diagSave').addEventListener('click', async () => {
+  const A = window.AndroidCast, name = diagName(), text = diagMd();
+  try {
+    if (A && A.saveAs) {   // Windows app (Save as window) / Android app 1.15+ (phone's Save as screen)
+      const r = await A.saveAs(name, text);
+      if (A.desktop) diagSaved(!!r, r ? String(r).replace(/[\/][^\/]*$/, '') : 'cancel');
+      return;
+    }
+    if (A && A.saveFile) { const ok = A.saveFile(name, text); diagSaved(ok, ok ? 'Downloads' : ''); return; }   // older Android app
+    if (window.showSaveFilePicker) {
+      const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+      const w = await h.createWritable(); await w.write(text); await w.close(); diagSaved(true, ''); return;
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' })); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); diagSaved(true, 'Downloads');
+  } catch (e) { diagSaved(false, e && e.name === 'AbortError' ? 'cancel' : ''); }
 });
 $('diagClose').addEventListener('click', () => diagDlg.close());
 diagDlg.addEventListener('click', e => { if (e.target === diagDlg) diagDlg.close(); });
