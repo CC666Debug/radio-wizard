@@ -604,7 +604,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.37.1';
+const VERSION = '1.37.2';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1215,15 +1215,15 @@ function recentMusicRow(x, ri) {
 let tab = (() => { const t = safeGet('rw_tab'); return t && document.querySelector('.tab[data-tab="' + t + '"]') ? t : 'search'; })();   // reopens on the tab you were on
 function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
 setTabs();   // the remembered tab is the lit one from the start
-// 1.37.1: a tab button always opens that tab's main page (Playlists list, SoundCloud / Bandcamp / Audius / Archive
-// home) — before, an open playlist or album stayed open and ‹ Back was the only way out.
+// 1.37.2: tapping the tab you're ALREADY on opens its main page (Playlists list, SoundCloud / Bandcamp / Audius /
+// Archive home). Switching to a tab from another one keeps the playlist or album you had open there (user's rule).
 function tabHome(t) {
   if (t === 'pl') plOpen = null;
   else if (t === 'sc') scAlbum = null;
   else if (t === 'bc') bcAlbum = null;
   else if (typeof msState !== 'undefined' && msState[t]) msState[t].album = null;
 }
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; tabHome(tab); safeSet('rw_tab', tab); setTabs(); render(); window.scrollTo(0, 0); }));
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { if (tab === b.dataset.tab) tabHome(tab); tab = b.dataset.tab; safeSet('rw_tab', tab); setTabs(); render(); window.scrollTo(0, 0); }));
 
 // Front-page pills: the starters plus every search you make; only removed by holding a pill → Delete.
 let pickSel = null;   // Set while picking pills to delete
