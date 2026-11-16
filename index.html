@@ -365,6 +365,15 @@
   .dragH { cursor: grab; touch-action: none; font-size: 1.25rem; padding: 6px 8px; color: var(--muted); -webkit-user-select: none; user-select: none; }
   li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); will-change: transform; }
   li.dragging.settle { transition: transform .15s ease-out; }
+  /* Picking several playlist rows (hold one): ticked rows, and the group being dragged. */
+  li.st.plSel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+  .plTick { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: .8rem; color: var(--bg); }
+  li.plSel .plTick { background: var(--accent); border-color: var(--accent); }
+  li.plGhost { opacity: .3; }
+  .plGrpN { position: absolute; top: -8px; right: -6px; background: var(--accent); color: var(--bg); border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 700; }
+  .plSelBar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+  .plSelBar b { margin-right: auto; }
+  .st { -webkit-touch-callout: none; }
   .np .go { cursor: pointer; }
   li.flash { outline: 2px solid var(--accent); outline-offset: -2px; transition: outline-color .4s; }
   li.shift { transition: transform .18s ease; will-change: transform; }
@@ -516,7 +525,7 @@
 </dialog>
 
 <dialog id="plDlg">
-  <h3>Add to a playlist</h3>
+  <h3 id="plDlgH">Add to a playlist</h3>
   <div class="hint" id="plWhat" style="margin:0 0 10px"></div>
   <div id="plChoices" class="plChoices"></div>
   <div class="row" style="justify-content:stretch"><input class="field" id="plNew" placeholder="New playlist name" style="flex:1"><button type="button" class="main" id="plMake">Make it</button></div>
@@ -604,7 +613,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.37.2';
+const VERSION = '1.38.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -615,6 +624,7 @@ const VERSION = '1.37.2';
 function rwBack() {
   const d = [...document.querySelectorAll('dialog[open]')].pop();
   if (d) { d.close(); return true; }
+  if (typeof plSel !== 'undefined' && plSel && tab === 'pl') { plSel = null; render(); return true; }
   const b = ['scBack', 'bcBack', 'msBack', 'plBack'].map(id => document.getElementById(id)).find(x => x && x.isConnected && x.getClientRects().length);
   if (b) { b.click(); return true; }
   return false;
@@ -1218,7 +1228,7 @@ setTabs();   // the remembered tab is the lit one from the start
 // 1.37.2: tapping the tab you're ALREADY on opens its main page (Playlists list, SoundCloud / Bandcamp / Audius /
 // Archive home). Switching to a tab from another one keeps the playlist or album you had open there (user's rule).
 function tabHome(t) {
-  if (t === 'pl') plOpen = null;
+  if (t === 'pl') { plOpen = null; plSel = null; }
   else if (t === 'sc') scAlbum = null;
   else if (t === 'bc') bcAlbum = null;
   else if (typeof msState !== 'undefined' && msState[t]) msState[t].album = null;
@@ -1882,7 +1892,13 @@ els.muteBtn.addEventListener('click', () => {
 });
 els.vol.value = safeGet('rw_vol') || 80;
 audio.volume = els.vol.value / 100;
+// 1.38.0: the speaker reports its level a beat late; for VOL_HOLD after you change it, RW shows the level you
+// picked instead of those late reports (they made the number jump backwards), then the speaker's own level again.
+const VOL_HOLD = 2500;
+let volTouchAt = 0, volSettleT = 0;
+const volHeld = () => Date.now() - volTouchAt < VOL_HOLD;
 els.vol.addEventListener('input', () => {
+  volTouchAt = Date.now(); clearTimeout(volSettleT); volSettleT = setTimeout(renderBar, VOL_HOLD + 200);
   if (castConnected() && player) { player.volumeLevel = els.vol.value / 100; ctrl.setVolumeLevel(); }
   else { audio.volume = els.vol.value / 100; safeSet('rw_vol', els.vol.value); }
   $('volNum').textContent = els.vol.value + '%';
@@ -1997,7 +2013,7 @@ function renderBar() {
     else if (castActive() && speakerPaused()) sub = 'Paused';
     else if (castActive()) { sub = 'Live'; live = true; playing = true; }
     else sub = st ? 'Tap play to start on ' + dev : 'Connected to ' + dev;
-    if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
+    if (player && player.volumeLevel != null && document.activeElement !== els.vol && !volHeld()) els.vol.value = Math.round(player.volumeLevel * 100);
   } else if (st) {
     if (hereState === 'starting') { sub = 'Tuning in…' + secsSince(hereStartAt); busy = true; playing = true; }
     else if (hereState === 'reconnecting') { sub = offlineWait ? 'No internet: it starts again when you’re back online' : 'Reconnecting…'; busy = true; playing = true; }
@@ -2463,7 +2479,7 @@ function bcRenderBar(cast, dev) {
     else if (speakerPaused() || bc.state === 'paused') sub = 'Paused · ' + sub;
     else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
     else playing = true;
-    if (player && player.volumeLevel != null && document.activeElement !== els.vol) els.vol.value = Math.round(player.volumeLevel * 100);
+    if (player && player.volumeLevel != null && document.activeElement !== els.vol && !volHeld()) els.vol.value = Math.round(player.volumeLevel * 100);
   } else {
     if (bc.state === 'starting') { busy = true; playing = true; sub = 'Starting…' + secsSince(bc.startAt) + ' · ' + sub; }
     else if (bc.state === 'ended') sub = 'Finished · tap play to start again';
@@ -3692,13 +3708,20 @@ function setLabel(text, live) { const e = $('npState'); e.textContent = text; e.
 // keeps which album and song it is, and gets a fresh link when it plays. A radio station plays until ⏭.
 let pls = readJSON('rw_pls', []);
 let plOpen = null, plCtx = null;   // plCtx = { id, order: [item indexes], i }
+// 1.38.0: hold (or right-click) a row inside a playlist to pick several: ⤒ Top, ⤓ Bottom, Move to another
+// playlist, or drag any ticked row's ⠿ to move them all together. { id: playlist id, keys: Set of plKey }
+let plSel = null, plHeldAt = 0;
+// Order follows you to other devices: each playlist stamps ordAt when its items are reordered, and the list of
+// playlists stamps rw_pls_ordat; the newest reorder wins on every device (songs it doesn't know go to the end).
+const plOrdered = pl => { if (pl) pl.ordAt = Date.now(); else safeSet('rw_pls_ordat', String(Date.now())); };
 const savePls = () => { try { localStorage.setItem('rw_pls', JSON.stringify(pls)); } catch (e) { showNotice('This device is out of space for playlists.'); } autoSave('pls'); };
 const plKey = it => it.k === 'bc' ? (it.ms ? 'ms|' + it.ms : it.sc ? 'sc|' + it.sc : 'bc|' + it.au + '|' + it.n + '|' + it.title) : 'radio|' + it.st.key;
 function bcItem(t) { const it = { k: 'bc', title: t.title, artist: t.artist, album: t.album, art: t.art, dur: t.dur, n: t.n, au: t.au }; if (t.sc) it.sc = t.sc; if (t.ms) { it.ms = t.ms; it.src = t.src; it.url = t.url; it.mime = t.mime; } return it; }
 
-let plPending = null;
+let plPending = null, plMoving = null;   // plMoving = the playlist ticked items move out of
 function plAsk(items, what) {
-  plPending = items;
+  plPending = items; plMoving = null;
+  $('plDlgH').textContent = 'Add to a playlist';
   $('plWhat').textContent = items.length === 1 ? what : items.length + ' songs from ' + what;
   $('plNew').value = '';
   $('plChoices').innerHTML = pls.length ? pls.map((p, i) => '<button class="btn plChoice" data-pi="' + i + '">' + esc(p.name) + ' <small>· ' + p.items.length + '</small></button>').join('') : '<div class="hint" style="margin:0">No playlists yet: name one below.</div>';
@@ -3713,34 +3736,58 @@ function plAdd(pl, items) {
   showNotice(add.length ? 'Added ' + (add.length === 1 ? '“' + (add[0].title || add[0].st.name) + '”' : add.length + ' items') + ' to ' + pl.name + '.' : 'Already in ' + pl.name + '.');
   if (tab === 'pl') render();
 }
-$('plChoices').addEventListener('click', e => { const b = e.target.closest('[data-pi]'); if (!b) return; $('plDlg').close(); plAdd(pls[+b.dataset.pi], plPending); });
+// Adds plPending to a playlist, or (Move to…) moves the ticked items there and out of the playlist they came from.
+function plFinish(to) {
+  const from = plMoving; plMoving = null;
+  if (!from) { plAdd(to, plPending); return; }
+  const g = plPending || [], keys = new Set(g.map(plKey));
+  plAdd(to, g);
+  from.items = from.items.filter(it => !keys.has(plKey(it)));
+  keys.forEach(k => markGone('plit', from.id + '|' + k));
+  if (plCtx && plCtx.id === from.id) plCtx = null;
+  plSel = null; savePls(); render();
+  showNotice('Moved ' + (g.length === 1 ? '“' + (g[0].title || g[0].st.name) + '”' : g.length + ' items') + ' to ' + to.name + '.');
+}
+$('plChoices').addEventListener('click', e => { const b = e.target.closest('[data-pi]'); if (!b) return; $('plDlg').close(); plFinish(pls[+b.dataset.pi]); });
 $('plMake').addEventListener('click', () => {
   const name = $('plNew').value.trim();
   if (!name) { $('plNew').focus(); return; }
   const pl = { id: 'p' + Date.now().toString(36), name, items: [], at: Date.now() };
   pls.unshift(pl);
   $('plDlg').close();
-  plAdd(pl, plPending || []);
+  plFinish(pl);
 });
 $('plCancel').addEventListener('click', () => $('plDlg').close());
+$('plDlg').addEventListener('close', () => setTimeout(() => { plMoving = null; }, 0));
 $('plDlg').addEventListener('click', e => { if (e.target === $('plDlg')) $('plDlg').close(); });
 
 function plItemRow(it, i, pl) {
   const radio = it.k === 'radio';
   const title = radio ? it.st.name : it.title, sub = radio ? '📻 ' + ([it.st.country, (it.st.tags || []).slice(0, 2).join(', ')].filter(Boolean).join(' · ') || 'Radio') : it.artist + ' · ' + it.album;
   const playing = plCtx && plCtx.id === pl.id && plCtx.order[plCtx.i] === i;
-  return '<li class="st' + (playing ? ' now' : '') + '" data-pli="' + i + '"><img class="art" loading="lazy" alt="" src="' + esc((radio ? it.st.img : it.art) || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+  const sel = plSel && plSel.id === pl.id, on = sel && plSel.keys.has(plKey(it));
+  return '<li class="st' + (playing ? ' now' : '') + (on ? ' plSel' : '') + '" data-pli="' + i + '">' + (sel ? '<span class="plTick">' + (on ? '✓' : '') + '</span>' : '') + '<img class="art" loading="lazy" alt="" src="' + esc((radio ? it.st.img : it.art) || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
     + '<div class="body"><div class="name">' + esc(title) + '</div><div class="meta">' + esc(sub) + (it.dur ? ' · ' + bcTime(it.dur) : '') + '</div></div>'
-    + '<button class="iconBtn dragH" data-drag="' + i + '" title="Drag to move">⠿</button><button class="iconBtn" data-rm="' + i + '" title="Remove">✕</button></li>';
+    + '<button class="iconBtn dragH" data-drag="' + i + '" title="' + (on && plSel.keys.size > 1 ? 'Drag to move all ' + plSel.keys.size + ' ticked' : 'Drag to move') + '">⠿</button>' + (sel ? '' : '<button class="iconBtn" data-rm="' + i + '" title="Remove">✕</button>') + '</li>';
 }
 function plView() {
   if (plOpen) {
     const pl = pls.find(p => p.id === plOpen);
     if (!pl) { plOpen = null; return plView(); }
+    if (plSel && plSel.id !== pl.id) plSel = null;
+    if (plSel) {
+      const n = plSel.keys.size, none = n ? '' : ' disabled';
+      return '<button class="backFab" id="plBack" title="Back">‹</button><div class="plSelBar"><b>' + n + ' picked</b>'
+        + '<button class="chip" id="plSelTop"' + none + '>⤒ Top</button><button class="chip" id="plSelBottom"' + none + '>⤓ Bottom</button>'
+        + '<button class="chip" id="plSelMove"' + none + '>➜ Move to…</button><button class="chip" id="plSelAll">All</button><button class="chip" id="plSelCancel">Cancel</button></div>'
+        + '<div class="hint" style="margin:0 0 8px;font-size:.75rem">Tap rows to tick them. Drag a ticked row’s ⠿ to move them all there.</div>'
+        + '<ul class="list">' + pl.items.map((it, i) => plItemRow(it, i, pl)).join('') + '</ul>';
+    }
     let h = '<button class="backFab" id="plBack" title="Back">‹</button><div class="bcHead"><div class="who"><b>' + esc(pl.name) + '</b> · ' + pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') + '</div>'
       + '<button class="btn main" id="plPlay">▶ Play</button><button class="btn" id="plShuf">🔀</button><button class="btn" id="plMenuBtn">⋯</button></div>';
     if (!pl.items.length) h += '<div class="empty">Empty. Add songs with ＋ in a Bandcamp album, from Find songs, or ＋ on the player; add stations with ＋ in search results.</div>';
     h += '<ul class="list">' + pl.items.map((it, i) => plItemRow(it, i, pl)).join('') + '</ul>';
+    if (pl.items.length > 1) h += '<div class="hint" style="margin-top:8px;font-size:.75rem">Hold a row (or right-click) to pick several and move them together.</div>';
     return h;
   }
   let h = '<div class="bcHead"><div class="who"><b>Playlists</b> · ' + pls.length + '</div><button class="btn main" id="plNewBtn">＋ New playlist</button></div>';
@@ -3759,7 +3806,28 @@ function plView() {
 function plWire() {
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
   const pl = plOpen && pls.find(p => p.id === plOpen);
-  on('plBack', () => { plOpen = null; render(); });
+  on('plBack', () => { if (plSel) { plSel = null; render(); return; } plOpen = null; render(); });
+  if (pl && plSel) {
+    const picked = () => pl.items.filter(it => plSel.keys.has(plKey(it)));
+    const toEnd = top => {
+      const g = picked(), rest = pl.items.filter(it => !plSel.keys.has(plKey(it)));
+      pl.items = top ? g.concat(rest) : rest.concat(g);
+      plOrdered(pl); plCtx = null; plSel = null; savePls(); render();
+      showNotice('Moved ' + g.length + (g.length === 1 ? ' item' : ' items') + ' to the ' + (top ? 'top.' : 'bottom.'));
+    };
+    on('plSelTop', () => toEnd(true));
+    on('plSelBottom', () => toEnd(false));
+    on('plSelAll', () => { plSel.keys = new Set(plSel.keys.size === pl.items.length ? [] : pl.items.map(plKey)); render(); });
+    on('plSelCancel', () => { plSel = null; render(); });
+    on('plSelMove', () => {
+      const g = picked(); if (!g.length) return;
+      plAsk(g, pl.name);
+      plMoving = pl;
+      $('plWhat').textContent = 'Move ' + (g.length === 1 ? '“' + (g[0].title || g[0].st.name) + '”' : g.length + ' items') + ' from ' + pl.name + '.';
+      $('plDlgH').textContent = 'Move to a playlist';
+      $('plChoices').querySelectorAll('[data-pi]').forEach(b => { if (pls[+b.dataset.pi] === pl) b.remove(); });
+    });
+  }
   on('plNewBtn', () => plAsk([], 'a new playlist'));
   on('plPlay', () => pl && playPlaylist(pl, 0, false));
   on('plShuf', () => pl && playPlaylist(pl, 0, true));
@@ -3776,8 +3844,39 @@ els.main.addEventListener('click', e => {
   const rm = e.target.closest('[data-rm]');
   if (rm) { const [it] = pl.items.splice(+rm.dataset.rm, 1); if (it) markGone('plit', pl.id + '|' + plKey(it)); if (plCtx && plCtx.id === pl.id) plCtx = null; savePls(); render(); return; }
   const row = e.target.closest('[data-pli]');
+  if (row && Date.now() - plHeldAt < 700) return;   // the click that ends a hold
+  if (row && plSel) {
+    const k = plKey(pl.items[+row.dataset.pli]);
+    if (plSel.keys.has(k)) plSel.keys.delete(k); else plSel.keys.add(k);
+    render(); return;
+  }
   if (row) playPlaylist(pl, +row.dataset.pli, false);
 }, true);
+// Hold a row inside a playlist (or right-click it) to start picking several.
+{
+  let t = 0;
+  const start = (row, held) => {
+    const pl = plOpen && pls.find(p => p.id === plOpen); if (!pl || plSel) return;
+    const it = pl.items[+row.dataset.pli]; if (!it) return;
+    plSel = { id: pl.id, keys: new Set([plKey(it)]) }; if (held) plHeldAt = Date.now();
+    if (navigator.vibrate) navigator.vibrate(20);
+    render();
+  };
+  els.main.addEventListener('pointerdown', e => {
+    const row = tab === 'pl' && !plSel && e.target.closest('[data-pli]');
+    if (!row || e.button > 0 || e.target.closest('[data-drag],[data-rm]')) return;
+    clearTimeout(t);
+    const x = e.clientX, y = e.clientY;
+    const stop = () => { clearTimeout(t); removeEventListener('pointerup', stop); removeEventListener('pointercancel', stop); removeEventListener('pointermove', mv); };
+    const mv = ev => { if (Math.abs(ev.clientX - x) > 10 || Math.abs(ev.clientY - y) > 10) stop(); };
+    addEventListener('pointerup', stop); addEventListener('pointercancel', stop); addEventListener('pointermove', mv);
+    t = setTimeout(() => { stop(); start(row, true); }, 550);
+  });
+  els.main.addEventListener('contextmenu', e => {
+    const row = tab === 'pl' && e.target.closest('[data-pli]'); if (!row) return;
+    e.preventDefault(); clearTimeout(t); start(row);
+  });
+}
 // Drag and drop to reorder a playlist: grab ⠿ (finger or mouse). The row follows the pointer, the rows it passes
 // glide aside, and the list itself only changes once, on drop (nothing jumps mid-drag). Near the top/bottom edge
 // the page scrolls by itself; the mini player stays as it is while dragging.
@@ -3791,6 +3890,8 @@ els.main.addEventListener('pointerdown', e => {
   const li = h.closest('li'), ul = li.parentElement;
   const rows = [...ul.querySelectorAll(pl ? ':scope > li[data-pli]' : ':scope > li[data-plopen]')];
   const from = rows.indexOf(li); if (from < 0) return;
+  // Several ticked and grabbing one of them: they all move, landing together where this one is dropped.
+  const group = pl && plSel && plSel.id === pl.id && plSel.keys.size > 1 && plSel.keys.has(plKey(arr[from])) ? plSel.keys : null;
   e.preventDefault();
   try { h.setPointerCapture(e.pointerId); } catch (err) {}
   rwDragging = true;
@@ -3802,6 +3903,10 @@ els.main.addEventListener('pointerdown', e => {
   document.body.classList.add('rwDrag');
   li.classList.add('dragging');
   rows.forEach(r => { if (r !== li) r.classList.add('shift'); });
+  if (group) {
+    rows.forEach((r, k) => { if (r !== li && group.has(plKey(arr[k]))) r.classList.add('plGhost'); });
+    const badge = document.createElement('span'); badge.className = 'plGrpN'; badge.textContent = group.size; li.appendChild(badge);
+  }
   const update = () => {
     const dy = y + scrollY - startDoc;
     li.style.transform = 'translate3d(0,' + dy + 'px,0)';
@@ -3836,7 +3941,15 @@ els.main.addEventListener('pointerdown', e => {
     li.style.transform = 'translate3d(0,' + (pos[to].top - pos[from].top + (to > from ? pos[to].h - pos[from].h : 0)) + 'px,0)';
     setTimeout(() => {
       document.body.classList.remove('rwDrag');
-      if (to !== from) { const [it] = arr.splice(from, 1); arr.splice(to, 0, it); if (pl) plCtx = null; savePls(); }
+      if (group) {
+        // The ticked rows, in their order, go where the grabbed one landed (among the rows that aren't ticked).
+        const g = [], rest = [];
+        arr.forEach((it, k) => (group.has(plKey(it)) ? g : rest).push({ it, k }));
+        const ins = rest.filter(x => to > from ? x.k <= to : x.k < to).length;
+        const next = rest.slice(0, ins).concat(g, rest.slice(ins)).map(x => x.it);
+        if (next.some((it, k) => it !== arr[k])) { arr.splice(0, arr.length, ...next); plOrdered(pl); plCtx = null; savePls(); }
+        plSel = null;   // done, like ⤒ Top / ⤓ Bottom
+      } else if (to !== from) { const [it] = arr.splice(from, 1); arr.splice(to, 0, it); plOrdered(pl); if (pl) plCtx = null; savePls(); }
       const sy = scrollY;
       render();
       if (scrollY !== sy) scrollTo(0, sy);
@@ -3880,7 +3993,7 @@ $('plSort').addEventListener('click', e => {
     kind: (a, b) => (a.k === 'radio') - (b.k === 'radio'),
   };
   if (b.dataset.sort === 'rev') pl.items.reverse(); else pl.items.sort(ways[b.dataset.sort]);
-  plCtx = null; savePls(); render();
+  plOrdered(pl); plCtx = null; savePls(); render();
   showNotice('Sorted: ' + b.textContent + '.');
 });
 
@@ -4211,29 +4324,51 @@ function unGarble(x) {
     pls: {
       file: 'playlists', what: 'playlists', count: () => pls.length,
       text: () => '# RadioWizard · playlists\n\n' + stamp(plural(pls.length, 'playlist', 'playlists')) + '\n'
-        + pls.map(p => '\n## ' + md(p.name) + hide('rw-pl', { id: p.id, name: p.name, at: p.at || 0, nameAt: p.nameAt || 0 }) + '\n\n'
+        + (+safeGet('rw_pls_ordat') ? hide('rw-plorder', { at: +safeGet('rw_pls_ordat'), ids: pls.map(p => p.id) }).trim() + '\n' : '')
+        + pls.map(p => '\n## ' + md(p.name) + hide('rw-pl', { id: p.id, name: p.name, at: p.at || 0, nameAt: p.nameAt || 0, ordAt: p.ordAt || 0 }) + '\n\n'
           + (p.items.length ? p.items.map((it, i) => (i + 1) + '. ' + (it.k === 'radio' ? '📻 **' + md(it.st.name) + '**' : '**' + md(it.title) + '** · ' + md(it.artist) + ' · ' + md(it.album))
             + hide('rw-it', it)).join('\n') : '_(empty)_') + '\n').join('')
         + goneText(['pls', 'plit']),
       take(old) {
         takeGone(old);
-        let n = 0, cur = null;
+        let n = 0, cur = null, listOrd = null;
+        const ord = new Map();   // playlist → { at, keys } when that device reordered it after this one did
         for (const line of (old || '').split(/\r?\n/)) {
+          const lo = unhide(line, 'rw-plorder');
+          if (lo && Array.isArray(lo.ids) && lo.at > (+safeGet('rw_pls_ordat') || 0)) { listOrd = lo; continue; }
           const head = unhide(line, 'rw-pl');
           if (head && head.name) {
             cur = pls.find(p => p.id === head.id) || (!head.id && pls.find(p => p.name === head.name)) || null;
             if (cur) { if ((head.nameAt || 0) > (cur.nameAt || 0)) { cur.name = head.name; cur.nameAt = head.nameAt; n++; } }
-            else if (!isGone('pls', head.id, head.at)) { cur = { id: head.id || 'p' + Date.now().toString(36) + pls.length, name: head.name, items: [], at: head.at || 0, nameAt: head.nameAt || 0 }; pls.push(cur); n++; }
+            else if (!isGone('pls', head.id, head.at)) { cur = { id: head.id || 'p' + Date.now().toString(36) + pls.length, name: head.name, items: [], at: head.at || 0, nameAt: head.nameAt || 0, ordAt: head.ordAt || 0 }; pls.push(cur); n++; }
+            if (cur && (head.ordAt || 0) > (cur.ordAt || 0)) ord.set(cur, { at: head.ordAt, keys: [] });
             continue;
           }
           const it = cur && unhide(line, 'rw-it');
+          if (it && ord.has(cur)) ord.get(cur).keys.push(plKey(it));
           if (it && (it.k === 'bc' || (it.k === 'radio' && it.st)) && !cur.items.some(x => plKey(x) === plKey(it)) && !isGone('plit', cur.id + '|' + plKey(it), it.at)) { cur.items.push(it); n++; }
+        }
+        // The newer order wins: items in that device's order, anything it doesn't have yet keeps its place at the end.
+        const byOrder = (list, keyOf, keys) => {
+          const at = new Map(keys.map((k, i) => [k, i]));
+          return list.map((x, i) => ({ x, i, o: at.has(keyOf(x)) ? at.get(keyOf(x)) : keys.length + i })).sort((a, b) => a.o - b.o).map(y => y.x);
+        };
+        ord.forEach((o, p) => {
+          const next = byOrder(p.items, plKey, o.keys);
+          if (next.some((x, i) => x !== p.items[i])) { p.items = next; n++; }
+          p.ordAt = o.at;
+        });
+        if (listOrd) {
+          const next = byOrder(pls, p => p.id, listOrd.ids);
+          if (next.some((x, i) => x !== pls[i])) { pls = next; n++; }
+          safeSet('rw_pls_ordat', String(listOrd.at));
         }
         const before = pls.length + pls.reduce((t, p) => t + p.items.length, 0);
         pls = pls.filter(p => !isGone('pls', p.id, p.at));
         pls.forEach(p => { p.items = p.items.filter(it => !isGone('plit', p.id + '|' + plKey(it), it.at)); });
         n += before - (pls.length + pls.reduce((t, p) => t + p.items.length, 0));
         if (n) { if (plOpen && !pls.some(p => p.id === plOpen)) plOpen = null; plCtx = null; savePls(true); if (tab === 'pl') render(); }
+        else if (ord.size) { try { localStorage.setItem('rw_pls', JSON.stringify(pls)); } catch (e) {} }
         return n;
       },
     },
