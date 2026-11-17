@@ -613,7 +613,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.38.0';
+const VERSION = '1.39.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1707,6 +1707,14 @@ window.__onGCastApiAvailable = function (available) {
       else carryOver = castActive() && !speakerPaused() && current ? current : null;
     }
     if (e.sessionState === S.SESSION_ENDED) {
+      // 1.39.0: only YOUR Stop moves the music to the phone. A dropped connection (phone asleep, Wi-Fi blip:
+      // "gave up after 15s", "resume failed", or any code but 0) leaves the speakers alone and the phone silent;
+      // before, the phone started playing by itself as soon as it woke up.
+      const ec = String(e.errorCode || '');
+      if (/gave up|resume failed/.test(ec) || /code [1-9]/.test(ec)) {
+        diag('connection dropped (' + ec + ') · nothing moves to the phone');
+        carryOver = null; if (bc && bc.where === 'speaker') bc.carry = null;
+      }
       if (bc && bc.where === 'speaker') { const c = bc.carry; bc.where = 'here'; bc.carry = null; if (c) bcPlayHere(c.pos); else bc.state = 'paused'; }
       else if (!carryOver) songStop();
       songWatchFor = null;
@@ -3850,7 +3858,7 @@ els.main.addEventListener('click', e => {
     if (plSel.keys.has(k)) plSel.keys.delete(k); else plSel.keys.add(k);
     render(); return;
   }
-  if (row) playPlaylist(pl, +row.dataset.pli, false);
+  if (row) playPlaylist(pl, +row.dataset.pli, false, true);
 }, true);
 // Hold a row inside a playlist (or right-click it) to start picking several.
 {
@@ -3997,12 +4005,14 @@ $('plSort').addEventListener('click', e => {
   showNotice('Sorted: ' + b.textContent + '.');
 });
 
-function playPlaylist(pl, from, shuffle) {
+// tapped = you tapped one item inside the playlist: Recent gets THAT station / song, not the playlist.
+function playPlaylist(pl, from, shuffle, tapped) {
   if (!pl || !pl.items.length) return;
   let order = pl.items.map((_, i) => i);
   if (shuffle) order = bcShuffle(order);
   else order = order.slice(from).concat(order.slice(0, from));
-  plCtx = { id: pl.id, order, i: 0 };
+  plCtx = { id: pl.id, order, i: 0, tap: !!tapped };
+  if (tapped) { plGo(); return; }
   const first = pl.items.find(it => it.k === 'bc' ? it.art : it.st && it.st.img);
   addRecentEntry({ m: 'pl', key: 'm|pl|' + pl.id, plId: pl.id, name: pl.name, src: 'Playlist', art: first ? (first.k === 'bc' ? first.art : first.st.img) : '',
     sub: pl.items.length + ' item' + (pl.items.length === 1 ? '' : 's') });
@@ -4024,12 +4034,14 @@ async function plGo() {
   if (!it) { plCtx = null; showNotice('End of the playlist.'); renderBar(); return; }
   const tok = ++plTok;
   if (tab === 'pl') render();
-  if (it.k === 'radio') { playStation(it.st, true); return; }
+  const tap = plCtx.tap; plCtx.tap = false;
+  if (it.k === 'radio') { playStation(it.st, true); if (tap) { addRecent(it.st); if (tab === 'recent') render(); } return; }
   let t = null;
   try { t = await plResolve(it); } catch (e) {}
   if (tok !== plTok) return;
   if (!t) { diag('playlist: no link for ' + it.title + ', skipping'); plStep(1); return; }
   bcStart([t], 0, false, true);
+  if (tap) { recentMusic([t], 0); if (tab === 'recent') render(); }
 }
 function plStep(d) {
   if (!plCtx) return;
