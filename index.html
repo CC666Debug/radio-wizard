@@ -612,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.40.0';
+const VERSION = '1.40.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1650,11 +1650,20 @@ function streamsNow(st) {
       got.push(u);
     }
     return got;
-  })).then(all => { all.flat().forEach(u => add(u, typeFor(u, st.codec))); out.more = null; diag('links looked up in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's · ' + out.length + ' in all'); });
+  })).then(all => { all.flat().forEach(u => add(u, typeFor(u, st.codec))); lastResort(out); out.more = null; diag('links looked up in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's · ' + out.length + ' in all'); });
+  lastResort(out);
   return out;
 }
-// The next link to try, waiting for the lookups only when the ones in hand have all been tried.
-async function linkAt(links, i) { while (!links[i] && links.more) await links.more; return links[i]; }
+// 1.40.1: links that nearly always fail go last (log 2026-11-17: 7 of 11 failed stations). Radionomy closed down
+// years ago; listen.shoutcast.com links are refused by the speakers at once. They're still tried if nothing else works.
+const DEADISH = /\/\/listen\.radionomy\.com|\/\/[^/]*radionomy\.com|\/\/listen\.shoutcast\.com/i;
+function lastResort(links) {
+  const good = links.filter(l => !DEADISH.test(l.url)), bad = links.filter(l => DEADISH.test(l.url));
+  links.splice(0, links.length, ...good, ...bad);
+}
+// The next link to try. Waits for the lookups when the ones in hand have all been tried — or only a
+// last-resort link is left, since a lookup may still bring a better one.
+async function linkAt(links, i) { while ((!links[i] || DEADISH.test(links[i].url)) && links.more) await links.more; return links[i]; }
 // Old http:// streams at a bare IP: the website can only reach them by name (sslip.io turns 1.2.3.4 into 1-2-3-4.sslip.io).
 const hereSrc = u => location.protocol === 'https:' ? u.replace(/^http:\/\/(\d+)\.(\d+)\.(\d+)\.(\d+)(?=[:/]|$)/, 'http://$1-$2-$3-$4.sslip.io') : u;
 
