@@ -340,9 +340,8 @@
   .np .label .br { text-transform: none; letter-spacing: 0; }
   /* Long names and song titles glide sideways so the end can be read. */
   .mq { text-overflow: clip !important; }
-  .mq > .mqIn { display: inline-block; padding-right: 1.5em; animation: mq var(--mq-t, 8s) ease-in-out infinite alternate; }
-  @keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--mq-d, 0px)); } }
-  @media (prefers-reduced-motion: reduce) { .mq > .mqIn { animation: none; } .mq { text-overflow: ellipsis !important; } }
+  .mq > .mqIn { display: inline-block; padding-right: 1.5em; will-change: transform; }
+  #npName, #npSub, .st .name { touch-action: pan-y; }   /* a sideways finger drag reads the text */
   .subRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .subRow .sub { min-width: 0; }
   .sHeart { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 1.45rem; line-height: 1; padding: 0 4px; flex: none; }
@@ -601,8 +600,8 @@
   <h3>Diagnostic log</h3>
   <textarea id="diagText" readonly></textarea>
   <div class="row">
-    <button type="button" id="diagClear" style="margin-right:auto">Clear log</button>
-    <button type="button" id="gcBtn">Don’t count me</button>
+    <button type="button" id="diagClear">Clear log</button>
+    <button type="button" id="gcBtn" style="margin-right:auto">Don’t count me</button>
     <button type="button" id="diagCopy">Copy log</button>
     <button type="button" id="diagSave">Save log</button>
     <button type="button" class="main" id="diagClose">Close</button>
@@ -613,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.39.1';
+const VERSION = '1.40.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1312,33 +1311,110 @@ function stationRow(st, i, g) {
     + '<button class="heart' + (isFav(st) ? ' on' : '') + '" data-heart="' + i + '" title="Favorite">' + (isFav(st) ? '♥' : '♡') + '</button></li>';
 }
 // Text too long for its space glides sideways and back (player name and song all the time; list rows while
-// hovered, and the playing row). Anything else setting the text just replaces the glide; it's re-fitted.
+// hovered, and the playing row). 1.40.0: one steady speed for everything, a short rest at each end, and it keeps
+// its place when the player redraws (a thumbs-up used to wipe it and leave it stopped). Drag it with the mouse or a
+// finger (or a sideways scroll / Shift+wheel) to read it yourself; it carries on gliding from there a moment later.
+const MQ_SPEED = 32, MQ_REST = 1400, MQ_HOLD = 2500;
+const mqLive = new Set(), mqMem = new Map();
+const mqSet = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent').set;
+const mqGet = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent').get;
+let mqRaf = 0, mqLast = 0;
+const mqNoMotion = matchMedia('(prefers-reduced-motion: reduce)');
+function mqKey(el) { return (el.id || 'row') + '|' + el.dataset.mqText; }
+function mqPaint(el) { const s = el._mq; if (s && s.sp) s.sp.style.transform = 'translate3d(' + (-s.pos).toFixed(2) + 'px,0,0)'; }
+function mqTick(now) {
+  const dt = mqLast ? Math.min(100, now - mqLast) : 0; mqLast = now;
+  mqLive.forEach(el => {
+    const s = el._mq;
+    if (!el.isConnected || !s) { mqLive.delete(el); return; }
+    if (s.drag || mqNoMotion.matches) return;
+    const t = Date.now();
+    if (t < s.wait) return;
+    s.pos += s.dir * MQ_SPEED * dt / 1000;
+    if (s.pos >= s.max) { s.pos = s.max; s.dir = -1; s.wait = t + MQ_REST; }
+    else if (s.pos <= 0) { s.pos = 0; s.dir = 1; s.wait = t + MQ_REST; }
+    mqMem.set(mqKey(el), { pos: s.pos, dir: s.dir, wait: s.wait });
+    mqPaint(el);
+  });
+  mqRaf = mqLive.size ? requestAnimationFrame(mqTick) : 0;
+  if (!mqRaf) mqLast = 0;
+}
 function fitMq(el) {
   if (!el || !el.isConnected) return;
-  const txt = el.textContent;
-  if (el.firstElementChild && el.firstElementChild.classList.contains('mqIn') || el.classList.contains('mq')) { el.classList.remove('mq'); el.textContent = txt; }
+  const txt = mqGet.call(el);
+  if (el.classList.contains('mq') || el.querySelector('.mqIn')) { el.classList.remove('mq'); mqSet.call(el, txt); }
   el.dataset.mqText = txt;
+  el._mq = null; mqLive.delete(el);
   const over = el.scrollWidth - el.clientWidth;
   if (over <= 2 || !el.clientWidth) return;
   const sp = document.createElement('span');
   sp.className = 'mqIn'; sp.textContent = txt;
-  el.textContent = ''; el.appendChild(sp); el.classList.add('mq');
-  const d = over + 24;
-  el.style.setProperty('--mq-d', -d + 'px');
-  el.style.setProperty('--mq-t', Math.min(30, Math.max(6, d / 22 + 4)).toFixed(1) + 's');
+  mqSet.call(el, ''); el.appendChild(sp); el.classList.add('mq');
+  const max = sp.offsetWidth - el.clientWidth + 4;
+  if (max <= 2) { unMq(el); return; }
+  if (mqMem.size > 200) mqMem.clear();
+  const m = mqMem.get(mqKey(el));
+  el._mq = { sp, max, pos: m ? Math.min(m.pos, max) : 0, dir: m ? m.dir : 1, wait: m ? m.wait : Date.now() + MQ_REST };
+  mqPaint(el);
+  mqLive.add(el);
+  if (!mqRaf) mqRaf = requestAnimationFrame(mqTick);
 }
-function unMq(el) { if (el && el.classList.contains('mq')) { const t = el.textContent; el.classList.remove('mq'); el.textContent = t; } }
+function unMq(el) { if (el && el.classList.contains('mq')) { const t = mqGet.call(el); el.classList.remove('mq'); el._mq = null; mqLive.delete(el); mqSet.call(el, t); } }
 {
   const watch = [$('npName'), $('npSub')];
   let q = 0;
-  const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(() => watch.forEach(el => { if (el.textContent !== el.dataset.mqText || !el.classList.contains('mq')) fitMq(el); })); };
-  const mo = new MutationObserver(() => watch.forEach(el => { if (el.textContent !== el.dataset.mqText) later(); }));
-  watch.forEach(el => mo.observe(el, { childList: true, characterData: true, subtree: true }));
+  const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(() => watch.forEach(el => { if (mqGet.call(el) !== el.dataset.mqText || (el.classList.contains('mq') && !el.querySelector('.mqIn'))) fitMq(el); })); };
+  // The player sets its name and song line over and over (every update); the same text again leaves the glide alone.
+  watch.forEach(el => Object.defineProperty(el, 'textContent', {
+    configurable: true,
+    get() { return mqGet.call(this); },
+    set(v) { v = String(v); if (v === this.dataset.mqText && mqGet.call(this) === v) return; mqSet.call(this, v); later(); }
+  }));
   const ro = new ResizeObserver(es => { let ch = false; es.forEach(x => { const w = Math.round(x.contentRect.width); if (w !== x.target._mqW) { x.target._mqW = w; x.target.dataset.mqText = ''; ch = true; } }); if (ch) later(); });
   watch.forEach(el => ro.observe(el));
-  if (document.fonts) document.fonts.ready.then(later);
+  if (document.fonts) document.fonts.ready.then(() => { watch.forEach(el => { el.dataset.mqText = ''; }); later(); });
   els.main.addEventListener('mouseover', e => { const n = e.target.closest('.st .name'); if (n && !n.classList.contains('mq')) fitMq(n); });
-  els.main.addEventListener('mouseout', e => { const n = e.target.closest('.st .name'); if (n && !n.contains(e.relatedTarget) && !n.closest('.st.now')) unMq(n); });
+  els.main.addEventListener('mouseout', e => { const n = e.target.closest('.st .name'); if (n && !n.contains(e.relatedTarget) && !n.closest('.st.now') && !(n._mq && n._mq.drag)) unMq(n); });
+  // Read it yourself: drag sideways (mouse or finger), or scroll sideways / Shift+wheel. Up-down wheel stays volume.
+  const target = e => e.target.closest ? e.target.closest('#npName, #npSub, .st .name') : null;
+  let dr = null, dragged = 0;
+  const hold = s => { s.wait = Date.now() + MQ_HOLD; s.dir = s.pos >= s.max ? -1 : 1; };
+  document.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    const n = target(e); if (!n) return;
+    if (!n._mq) fitMq(n);
+    if (!n._mq) return;
+    dr = { n, x: e.clientX, y: e.clientY, pos: n._mq.pos, id: e.pointerId, on: false };
+  }, true);
+  document.addEventListener('pointermove', e => {
+    if (!dr || e.pointerId !== dr.id || !dr.n._mq) return;
+    const dx = e.clientX - dr.x, dy = e.clientY - dr.y, s = dr.n._mq;
+    if (!dr.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { dr = null; return; }
+      if (Math.abs(dx) < 6) return;
+      dr.on = true; s.drag = true; try { dr.n.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    s.pos = Math.max(0, Math.min(s.max, dr.pos - dx));
+    mqPaint(dr.n); e.preventDefault();
+  }, true);
+  const up = e => {
+    if (!dr || e.pointerId !== dr.id) return;
+    const s = dr.n._mq;
+    if (dr.on && s) { s.drag = false; hold(s); mqMem.set(mqKey(dr.n), { pos: s.pos, dir: s.dir, wait: s.wait }); dragged = Date.now(); }
+    dr = null;
+  };
+  document.addEventListener('pointerup', up, true);
+  document.addEventListener('pointercancel', up, true);
+  document.addEventListener('click', e => { if (Date.now() - dragged < 400) { dragged = 0; e.stopPropagation(); e.preventDefault(); } }, true);   // a drag isn't a tap
+  document.addEventListener('wheel', e => {
+    const n = target(e); if (!n) return;
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+    if (!d) return;
+    if (!n._mq) fitMq(n);
+    const s = n._mq; if (!s) return;
+    e.preventDefault(); e.stopPropagation();
+    s.pos = Math.max(0, Math.min(s.max, s.pos + d)); hold(s); mqPaint(n);
+  }, { passive: false, capture: true });
 }
 let mainList = null;   // the rows' own stations (no quality variants), for next / previous
 function render() {
@@ -1516,7 +1592,7 @@ function playStarted() { clearTimeout(failTimer); if (failShown) hideNotice(); }
 $('noticeClose').addEventListener('click', hideNotice);
 
 // ── Playing ─────────────────────────────────────
-// current = the station chosen (playing here or on the speaker). streamsFor() gives every link to try, best first.
+// current = the station chosen (playing here or on the speaker). streamsNow() gives every link to try, best first.
 let current = readJSON('rw_current', null);
 // The last song played (Bandcamp, SoundCloud, Audius, Archive, a playlist): shown in the player when RW opens,
 // and ▶ starts that song again from its beginning, in the same album / list / playlist / shuffle.
@@ -1555,17 +1631,30 @@ async function resumeLast() {
 }
 let here = null;      // { st, links, i } while playing on this device
 let hereState = 'idle';   // idle | starting | playing
-async function streamsFor(st) {
-  const out = [];
-  if (st.play && st.play.url) out.push({ url: st.play.url, type: st.play.type });
+// 1.40.0: start right away. Links RW already has (the one that worked last time, plain stream links) go first and
+// are tried at once; the ones a directory has to look up (TuneIn, Radio Garden, iHeart…) are fetched meanwhile, all
+// at the same time, and wait in line behind them. Before, every lookup was finished one after another before anything
+// was sent. links.more = the lookups still on their way (null when done).
+function streamsNow(st) {
+  const out = [], add = (u, type) => { if (u && !out.some(o => o.url === u)) out.push({ url: u, type }); };
+  if (st.play && st.play.url) add(st.play.url, st.play.type);
+  const slow = [];
   for (const src of st.srcs) {
+    if (src.url && (NATIVE || !isPlaylistUrl(src.url))) add(src.url, typeFor(src.url, st.codec)); else slow.push(src);
+  }
+  const t0 = Date.now();
+  out.more = !slow.length ? null : Promise.all(slow.map(async src => {
+    const got = [];
     for (let u of await linksFor(src)) {
       if (!NATIVE && isPlaylistUrl(u)) { try { const l = playlistLinks((await get(u)).text); if (l.length) u = l[0]; } catch (e) {} }
-      if (!out.some(o => o.url === u)) out.push({ url: u, type: typeFor(u, st.codec) });
+      got.push(u);
     }
-  }
+    return got;
+  })).then(all => { all.flat().forEach(u => add(u, typeFor(u, st.codec))); out.more = null; diag('links looked up in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's · ' + out.length + ' in all'); });
   return out;
 }
+// The next link to try, waiting for the lookups only when the ones in hand have all been tried.
+async function linkAt(links, i) { while (!links[i] && links.more) await links.more; return links[i]; }
 // Old http:// streams at a bare IP: the website can only reach them by name (sslip.io turns 1.2.3.4 into 1-2-3-4.sslip.io).
 const hereSrc = u => location.protocol === 'https:' ? u.replace(/^http:\/\/(\d+)\.(\d+)\.(\d+)\.(\d+)(?=[:/]|$)/, 'http://$1-$2-$3-$4.sslip.io') : u;
 
@@ -1596,16 +1685,17 @@ async function playHere(st) {
   const tok = ++hereTok;
   hereStartAt = Date.now();
   hereState = 'starting'; renderBar();
-  const links = await streamsFor(st);
-  if (tok !== hereTok) return;
+  const links = streamsNow(st);
   here = { st, links, i: -1 };
-  diag('play here: ' + st.name + ' · ' + links.length + ' link(s)');
+  diag('play here: ' + st.name + ' · ' + links.length + ' link(s) ready' + (links.more ? ', more being looked up' : ''));
   tryNextHere(tok);
 }
-function tryNextHere(tok) {
+async function tryNextHere(tok) {
   if (tok !== hereTok || !here) return;
-  here.i++;
-  const l = here.links[here.i];
+  const h = here;
+  h.i++;
+  const l = await linkAt(h.links, h.i);
+  if (tok !== hereTok || here !== h) return;
   if (!l) {
     diag('nothing played for ' + here.st.name);
     const blocked = !NATIVE && here.links.some(x => x.url.startsWith('http:'));
@@ -1731,10 +1821,10 @@ async function loadOnSpeaker(st, links) {
   if (!session) return;
   if (!links) speakerStartAt = Date.now();
   speakerLoading = st; renderBar();
-  if (!links) { links = await streamsFor(st); links.i = 0; }
-  if (speakerLoading !== st) return;
+  if (!links) { links = streamsNow(st); links.i = 0; }
   speakerLinks = links;
-  const l = links[links.i];
+  const l = await linkAt(links, links.i);
+  if (speakerLoading !== st || speakerLinks !== links) return;
   if (!l) {
     showFail(st.name + ' won’t play on the speaker. Try another station.', () => castActive() || speakerLoading !== st || !castConnected());
     setTimeout(() => { if (speakerLoading === st && !castActive()) { speakerLoading = null; renderBar(); } }, 8000);
@@ -1752,7 +1842,7 @@ async function loadOnSpeaker(st, links) {
   const req = new chrome.cast.media.LoadRequest(info);
   req.autoplay = true;
   const t = performance.now();
-  diag('sending ' + st.name + ' to ' + session.getCastDevice().friendlyName + ' · ' + l.url);
+  diag('sending ' + st.name + ' to ' + session.getCastDevice().friendlyName + ' (' + ((Date.now() - speakerStartAt) / 1000).toFixed(2) + 's after the tap) · ' + l.url);
   safeSet('rw_cast', l.url);
   try { localStorage.removeItem('rw_cast_m'); localStorage.removeItem('rw_cast_q'); } catch (e) {}
   kickStart();
