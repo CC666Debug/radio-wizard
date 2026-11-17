@@ -612,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.40.1';
+const VERSION = '1.41.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -951,6 +951,22 @@ const SOURCES = [
 ];
 // Stations no directory lists (or only lists in a worse version). Add more here.
 const RW_PICKS = [
+  // Halloween Radio (halloweenradio.net): its current server, all 7 public channels. The directories only list 5, on the
+  // old server at 64-96k (same music, same moment — checked 2026-11-17). Supporter streams never go here.
+  { name: 'Halloween Radio Main', url: 'https://stream.halloweenradio.net/listen/halloween_radio_main/mp3', tags: ['halloween', 'horror'], also: 'halloween spooky hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Main', url: 'https://stream.halloweenradio.net/listen/halloween_radio_main/aac', tags: ['halloween', 'horror'], also: 'halloween spooky hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
+  { name: 'Halloween Radio Oldies', url: 'https://stream.halloweenradio.net/listen/halloween_radio_oldies/mp3', tags: ['halloween', 'horror'], also: 'halloween oldies 50s 60s novelty hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Oldies', url: 'https://stream.halloweenradio.net/listen/halloween_radio_oldies/aac', tags: ['halloween', 'horror'], also: 'halloween oldies 50s 60s novelty hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
+  { name: 'Halloween Radio Kids', url: 'https://stream.halloweenradio.net/listen/halloween_radio_kids/mp3', tags: ['halloween', 'horror'], also: 'halloween kids children family hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Kids', url: 'https://stream.halloweenradio.net/listen/halloween_radio_kids/aac', tags: ['halloween', 'horror'], also: 'halloween kids children family hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
+  { name: 'Halloween Radio Atmosphere', url: 'https://stream.halloweenradio.net/listen/halloween_radio_atmosphere/mp3', tags: ['halloween', 'horror'], also: 'halloween ambient soundscape spooky sounds hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Atmosphere', url: 'https://stream.halloweenradio.net/listen/halloween_radio_atmosphere/aac', tags: ['halloween', 'horror'], also: 'halloween ambient soundscape spooky sounds hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 64 },
+  { name: 'Halloween Radio Movies', url: 'https://stream.halloweenradio.net/listen/halloween_radio_soundtracks/mp3', tags: ['halloween', 'horror'], also: 'halloween soundtracks horror film score hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Movies', url: 'https://stream.halloweenradio.net/listen/halloween_radio_soundtracks/aac', tags: ['halloween', 'horror'], also: 'halloween soundtracks horror film score hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
+  { name: 'Halloween Radio Instrumental', url: 'https://stream.halloweenradio.net/listen/halloween_radio_instrumental/mp3', tags: ['halloween', 'horror'], also: 'halloween instrumental hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Instrumental', url: 'https://stream.halloweenradio.net/listen/halloween_radio_instrumental/aac', tags: ['halloween', 'horror'], also: 'halloween instrumental hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
+  { name: 'Halloween Radio Cauldron', url: 'https://stream.halloweenradio.net/listen/halloween_radio_cauldron/mp3', tags: ['halloween', 'horror'], also: 'halloween dark gothic metal hwr halloweenradio', country: 'US', codec: 'MP3', bitrate: 128 },
+  { name: 'Halloween Radio Cauldron', url: 'https://stream.halloweenradio.net/listen/halloween_radio_cauldron/aac', tags: ['halloween', 'horror'], also: 'halloween dark gothic metal hwr halloweenradio', country: 'US', codec: 'AAC', bitrate: 96 },
   { name: 'Radio Caprice WITCH HOUSE (320k)', url: 'http://79.120.77.11:8004/witchhouse', tags: ['witch house'], also: 'witchhouse caprice', country: 'RU', codec: 'AAC+', bitrate: 320 },
 ];
 const SRC = Object.fromEntries(SOURCES.map(s => [s.id, s]));
