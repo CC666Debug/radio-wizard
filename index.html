@@ -612,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.41.0';
+const VERSION = '1.41.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1045,12 +1045,21 @@ function typeFor(url, hint) {
   if (/flac/.test(t)) return 'audio/flac';
   return 'audio/mpeg';
 }
+// 1.41.1: the check asks like a web browser first. Some servers (old SHOUTcast ones like Radio Caprice) answer a browser
+// with their web page instead of the music, and others turn away anything that isn't a browser. So a link only counts
+// as dead when it ALSO fails when asked like a media player (VLC). Before, many "no answer" stations played when tapped.
+const PLAYER_UA = 'VLC/3.0.21 LibVLC/3.0.21';
 async function probeUrl(url, depth = 0) {
-  const r = await native('probe', { url, timeout: 7000 });
+  const p = await probeAs(url, depth, null).catch(() => null);
+  return p || probeAs(url, depth, PLAYER_UA).catch(() => null);
+}
+async function probeAs(url, depth, ua) {
+  const r = await native('probe', ua ? { url, timeout: 9000, headers: { 'User-Agent': ua } } : { url, timeout: 7000 });
   if (!r.ok) return null;
   const ct = (r.contentType || '').toLowerCase();
   const head = r.head || '';
   if (/^#EXTM3U/.test(head) && /#EXT-X-/.test(head)) return { url: r.url || url, type: 'application/x-mpegURL' };
+  if (/text\/html/.test(ct) && !/^\s*(#EXTM3U|\[playlist\]|https?:\/\/)/i.test(head)) return null;   // a web page, not the stream
   if (/scpls|mpegurl|text\/|x-scpls/.test(ct) || /^\[playlist\]/i.test(head) || /^#EXTM3U/.test(head) || (isPlaylistUrl(url) && !/audio\/(mpeg|aac|ogg)/.test(ct))) {
     if (depth > 1) return null;
     for (const l of playlistLinks(head).slice(0, 3)) { const p = await probeUrl(l, depth + 1); if (p) return p; }
