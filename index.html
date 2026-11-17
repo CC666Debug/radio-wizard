@@ -613,7 +613,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.39.0';
+const VERSION = '1.39.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1711,7 +1711,7 @@ window.__onGCastApiAvailable = function (available) {
       // "gave up after 15s", "resume failed", or any code but 0) leaves the speakers alone and the phone silent;
       // before, the phone started playing by itself as soon as it woke up.
       const ec = String(e.errorCode || '');
-      if (/gave up|resume failed/.test(ec) || /code [1-9]/.test(ec)) {
+      if (Date.now() - castTapAt > 120000 || /gave up|resume failed/.test(ec) || /code [1-9]/.test(ec)) {
         diag('connection dropped (' + ec + ') · nothing moves to the phone');
         carryOver = null; if (bc && bc.where === 'speaker') bc.carry = null;
       }
@@ -1874,7 +1874,11 @@ const castConnected = () => !!(ctx && ctx.getCurrentSession());
 const castActive = () => !!ctx && !!player && player.isMediaLoaded && !!player.playerState && player.playerState !== chrome.cast.media.PlayerState.IDLE;
 const speakerPaused = () => !!player && player.playerState === chrome.cast.media.PlayerState.PAUSED;
 
+// The cast button is the only way to Stop casting yourself (its list has Stop). An ending within 2 min of a tap counts
+// as yours; any other ending (phone off Wi-Fi, speaker gone) is a drop. Browsers send no reason, so this works everywhere.
+var castTapAt = 0;
 els.castBtn.addEventListener('click', () => {
+  castTapAt = Date.now();
   if (!ctx) { showNotice('Casting needs Chrome (Android or computer) or the RadioWizard Android app. Listening on this device works everywhere.'); return; }
   diag('cast button tapped (state ' + ctx.getCastState() + ')');
   castListOpen = true;
