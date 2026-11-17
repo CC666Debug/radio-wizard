@@ -612,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.41.1';
+const VERSION = '1.42.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -3017,9 +3017,12 @@ function shufPick(pool, id) {
   shufDone.add(id(t));
   return t;
 }
+// 1.42.0: shuffle draws from ALL your SoundCloud songs (likes, uploads and every playlist, from the playlist index),
+// each once before any comes back. It used to take only the likes whenever there were any (user: "only goes through my 4").
 async function scRandomTrack() {
-  const likes = scItems.find(x => x.kind === 'likes');
-  const pool = (likes ? likes.tracks : scSongs()).filter(scPlayable);
+  if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} }
+  if (!scIdxRun) scIndex();   // reads any playlists not indexed yet, in the background
+  const seen = new Set(), pool = scSongs().filter(t => scPlayable(t) && !seen.has(t.sc) && seen.add(t.sc));
   const t = shufPick(pool, x => 'sc' + x.sc);
   return t ? Object.assign({}, t) : null;
 }
