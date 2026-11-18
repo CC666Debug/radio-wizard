@@ -361,6 +361,7 @@
   .pSeek.drag .pTrack i { background: var(--accent); }
   .volRow .iconBtn { font-size: 1.05rem; }
   #songsList { max-height: 60dvh; overflow: auto; }
+  #upList { max-height: 60dvh; overflow: auto; }
   .dragH { cursor: grab; touch-action: none; font-size: 1.25rem; padding: 6px 8px; color: var(--muted); -webkit-user-select: none; user-select: none; }
   li.dragging { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); border-color: var(--accent); will-change: transform; }
   li.dragging.settle { transition: transform .15s ease-out; }
@@ -467,7 +468,7 @@
         <div class="np">
           <div class="label"><span class="state" id="npState">Ready</span><span class="where" id="where">This device</span><span class="br" id="npBr" hidden></span><span class="crowd" id="crowd" hidden></span></div>
           <div class="name" id="npName">Nothing playing</div>
-          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart thumb" id="songHeart" title="Thumbs up: keep this song" hidden><svg class="thumbI" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
+          <div class="subRow"><div class="sub" id="npSub">Search for a station and tap it</div><button class="sHeart thumb" id="songHeart" title="Thumbs up: keep this song" hidden><svg class="thumbI" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><button class="iconBtn sBtn" id="songShare" title="Share this song" hidden>📤</button><button class="iconBtn sBtn" id="upNextBtn" title="Up next" hidden>📃</button><button class="iconBtn sBtn" id="songsBtn" title="Recently played and saved songs">🎵</button></div>
         </div>
       </div>
       <div class="prog" id="prog" hidden><div class="pSeek" id="pSeek"><div class="pTrack"><i id="pFill"></i></div></div><button class="pTime" id="pD" type="button" title="Tap to change how the time shows">0:00</button></div>
@@ -579,6 +580,13 @@
   <div class="row"><button type="button" id="songsClear" hidden>🗑️ Clear</button><button type="button" id="songsCopy">Copy list</button><button type="button" class="main" id="songsClose">Close</button></div>
 </dialog>
 
+<dialog id="upDlg">
+  <h3 style="margin:0 0 4px">Up next</h3>
+  <p class="hint" id="upStat" style="margin:0 0 8px"></p>
+  <ul class="list" id="upList"></ul>
+  <div class="row"><button type="button" id="upSave">＋ Save as playlist</button><button type="button" class="main" id="upClose">Close</button></div>
+</dialog>
+
 <dialog id="bkDlg">
   <h3>Backups</h3>
   <p class="hint" style="margin:0 0 8px">Markdown files in a folder you pick (an Obsidian vault works). Once backed up, each file keeps itself up to date. Restore adds what’s missing and never deletes.</p>
@@ -626,7 +634,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.44.0';
+const VERSION = '1.45.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1744,7 +1752,7 @@ async function resumeLast() {
     }
     if (L.shuf) {
       const r = await plResolve(L.t).catch(() => null);
-      if (r) { recentAct = L.shuf; bcStart([r], 0, true); if (bc) bc.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; return; }
+      if (r) { recentAct = L.shuf; bcStart([r], 0, true); if (bc) { bc.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; scTopUp(bc); } return; }
     }
     const x = L.key && recent.find(r => r.key === L.key && r.m === 'list');
     if (x && (x.ref || (x.items && x.items.length > 1))) {
@@ -2050,7 +2058,7 @@ async function bcRefill(L) {
   const b = bc;
   const pl = L.pl && pls.find(p => p.id === L.pl.id);
   if (pl) { plCtx = { id: pl.id, order: (L.pl.order || []).filter(i => i < pl.items.length), i: L.pl.i || 0 }; return; }
-  if (L.shuf) { b.shuffle = true; b.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; return; }
+  if (L.shuf) { b.shuffle = true; b.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; scTopUp(b); return; }
   const x = L.key && recent.find(r => r.key === L.key && r.m === 'list' && r.ref);
   if (!x) return;
   let list = [];
@@ -2230,6 +2238,7 @@ function renderBar() {
   const ns = nowSong();
   $('songHeart').hidden = !ns;
   $('songShare').hidden = !ns;
+  $('upNextBtn').hidden = !upNext().length;
   if (ns) { const on = isSaved(ns.song); $('songHeart').classList.toggle('on', on); $('songHeart').title = on ? 'Thumbs up given (tap to take it back)' : 'Thumbs up: keep this song'; }
   drawClock();
   paintVol();
@@ -2538,8 +2547,10 @@ async function bcPlayHit(t) {
   showNotice('Couldn’t get that song from Bandcamp. Try again.');
 }
 function bcGo(pos) {
-  const t = bcTrack();
+  let t = bcTrack();
   if (!t) return;
+  while (t.skip && bc.i < bc.queue.length - 1) { bc.i++; t = bcTrack(); pos = 0; }   // taken out in Up next
+  scTopUp(bc);
   if (t.sc && !(t.url && t.exp - Date.now() > 120e3)) {   // SoundCloud: a fresh link first
     bc.state = 'starting'; bc.startAt = Date.now(); renderBar();
     const b = bc;
@@ -2657,6 +2668,8 @@ function bcQueueSync() {
   const k = bc.queue.findIndex((x, n) => n > bc.i && n <= bc.queued && x.url === cid);
   if (k < 0) return;
   bc.i = k; bc.sent = cid; bc.state = 'playing';
+  if (bcTrack().skip) { diag('speaker reached a song taken out in Up next: skipping it'); bcNext(); return; }
+  scTopUp(bc);
   safeSet('rw_cast_m', JSON.stringify({ url: cid, at: Date.now() }));
   bcClock.start = performance.now(); bcClock.pos = 0; bcClock.paused = false;
   diag('speaker moved on to ' + bcTrack().title);
@@ -3131,11 +3144,61 @@ async function scRandomTrack() {
 }
 async function scShuffleAll() {
   const t = await scRandomTrack();
-  if (!t) { showNotice('No songs in your SoundCloud playlists to shuffle yet.'); return; }
+  if (!t) { showNotice('No songs in your SoundCloud playlists to shuffle yet.' + (scItems.some(x => x.kind === 'pl') ? ' RW is still reading them: try again in a minute.' : '')); return; }
   recentAct = 'sc';
   bcStart([t], 0, true);
-  if (bc) bc.pick = scRandomTrack;
+  if (bc) { bc.pick = scRandomTrack; scTopUp(bc); }
+  showNotice(scShufStat());
 }
+// 1.45.0: Shuffle playlists picks the next 50 songs ahead, so 📃 Up next can show them (tap = play now, ✕ = take out).
+const UP_AHEAD = 50;
+async function scTopUp(b) {
+  if (!b || b.pick !== scRandomTrack || b.topping) return;
+  b.topping = true;
+  try { while (bc === b && b.queue.length - b.i - 1 < UP_AHEAD) { const t = await scRandomTrack(); if (!t || bc !== b) break; b.queue.push(t); await new Promise(r => setTimeout(r, 0)); } }   // a breath between picks: 40,000 songs mustn't freeze the page
+  finally { b.topping = false; }
+  if (bc === b) { renderBar(); if ($('upDlg').open) drawUpNext(); }
+}
+// How much of your SoundCloud the shuffle draws from: playlists read so far, still reading, and ones that won't open.
+function scShufStat() {
+  const pl = scItems.filter(x => x.kind === 'pl');
+  const read = pl.filter(x => x.tracks || (scIdx && scIdx.lists[x.id] && !scIdx.lists[x.id].fail)).length;
+  const bad = pl.filter(x => scIdxFailed.has(x.id) && !(scIdx && scIdx.lists[x.id] && !scIdx.lists[x.id].fail)).length;
+  const seen = new Set(); let n = 0;
+  scSongs(true).forEach(t => { if (scPlayable(t) && !seen.has(t.sc)) { seen.add(t.sc); n++; } });
+  const left = pl.length - read - bad;
+  return 'Shuffling ' + n.toLocaleString() + ' songs from ' + read + ' of ' + pl.length + ' playlists' + (left > 0 ? ' (still reading ' + left + ')' : '')
+    + (bad ? '. ' + bad + ' wouldn’t open: SoundCloud ⋯ → Sign in again.' : '.');
+}
+const upNext = () => bc ? bc.queue.map((t, j) => [t, j]).slice(bc.i + 1).filter(([t]) => !t.skip) : [];
+function drawUpNext() {
+  if (!bc) { $('upDlg').close(); return; }
+  const list = upNext(), cur = bcTrack();
+  $('upStat').textContent = (bc.pick === scRandomTrack ? scShufStat() + ' ' : '') + (cur ? 'Now: ' + cur.artist + ' – ' + cur.title : '');
+  $('upList').innerHTML = list.length ? list.map(([t, j]) => '<li class="st" data-upj="' + j + '" style="cursor:pointer"><img class="art" loading="lazy" alt="" src="' + esc(t.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
+    + '<div class="body"><div class="name">' + esc(t.title) + '</div><div class="meta">' + esc([t.artist, t.album].filter(Boolean).join(' · ')) + (t.dur ? ' · ' + bcTime(t.dur) : '') + '</div></div>'
+    + '<button class="iconBtn" data-uprm="' + j + '" title="Take it out">✕</button></li>').join('') : '<li class="empty">Nothing queued after this song.</li>';
+  $('upSave').hidden = !list.length;
+}
+$('upNextBtn').addEventListener('click', () => { drawUpNext(); $('upDlg').showModal(); $('upList').scrollTop = 0; });
+$('upClose').addEventListener('click', () => $('upDlg').close());
+$('upDlg').addEventListener('click', e => { if (e.target === $('upDlg')) $('upDlg').close(); });
+$('upList').addEventListener('click', e => {
+  if (!bc) return;
+  const rm = e.target.closest('[data-uprm]');
+  if (rm) {
+    const j = +rm.dataset.uprm, t = bc.queue[j]; if (!t) return;
+    // already handed to the speaker (no way to take it back there): marked, and skipped when the speaker gets to it
+    if (bc.where === 'speaker' && bc.queued != null && j <= bc.queued) t.skip = true; else bc.queue.splice(j, 1);
+    drawUpNext(); renderBar(); scTopUp(bc);
+    return;
+  }
+  const row = e.target.closest('[data-upj]'); if (!row) return;
+  const t = bc.queue.splice(+row.dataset.upj, 1)[0]; if (!t) return;
+  bc.queue.splice(bc.i + 1, 0, t); bc.i++;
+  bcGo(0); drawUpNext();
+});
+$('upSave').addEventListener('click', () => { const items = [bcTrack(), ...upNext().map(x => x[0])].filter(Boolean).map(bcItem); $('upDlg').close(); plAsk(items, 'Up next'); });
 // Plays HLS links in the app itself: natively where the system can, otherwise with hls.js.
 let scHls = null, hlsLib = null;
 function hlsDrop() { if (scHls) { try { scHls.destroy(); } catch (e) {} scHls = null; } }
