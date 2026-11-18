@@ -370,7 +370,7 @@
   li.plSel .plTick { background: var(--accent); border-color: var(--accent); }
   li.plGhost { opacity: .3; }
   .plGrpN { position: absolute; top: -8px; right: -6px; background: var(--accent); color: var(--bg); border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 700; }
-  .plSelBar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+  .plSelBar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; position: sticky; top: var(--topH, 0px); z-index: 4; background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); padding: 8px 4px; margin: 0 -4px 10px; }
   .plSelBar b { margin-right: auto; }
   .st { -webkit-touch-callout: none; }
   .np .go { cursor: pointer; }
@@ -612,7 +612,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.42.0';
+const VERSION = '1.42.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
