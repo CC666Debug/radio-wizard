@@ -403,6 +403,11 @@
   .recArrow { display: inline-block; transition: transform .15s ease; }
   .recHead.shut .recArrow { transform: rotate(-90deg); }
   .recClr { font-size: .85rem; }
+  .recDrag { touch-action: none; cursor: grab; color: var(--muted); padding: 4px 6px; }
+  .recSec.lift { position: relative; z-index: 5; opacity: .92; }
+  .recSec.lift .recHead { border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 0 14px var(--glow); }
+  #main.recMoving .recSec > ul { display: none; }
+  #main.recMoving .recHead { position: static; }
   .recClr.sure { color: var(--accent); font-size: .75rem; white-space: nowrap; }
   .catHead { margin: 16px 2px 6px; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
   .catHead small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
@@ -621,7 +626,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.43.1';
+const VERSION = '1.44.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -644,7 +649,7 @@ const $ = id => document.getElementById(id);
 // Settings that follow you between devices (through the backup folder). Each change is stamped with its time so the
 // newest change wins; writes made while the app starts up aren't stamped (they're defaults, not choices).
 // Theme, accent and light/dark stay per device (user wants different looks on each).
-const SET_KEYS = ['rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort', 'rw_bcsort'];
+const SET_KEYS = ['rw_srcs', 'rw_svcs', 'rw_favsort', 'rw_time', 'rw_picksort', 'rw_picksrev', 'rw_secorder', 'rw_scsort', 'rw_bcsort', 'rw_recorder'];
 let rwBooted = false, setTimer = 0;
 setTimeout(() => { rwBooted = true; }, 0);
 function setTouch(k) {
@@ -1260,19 +1265,62 @@ const REC_KINDS = [['st', '📻 Stations'], ['pl', '📜 Playlists'], ['sc', '�
 const recKind = x => !x.m ? 'st' : x.m === 'pl' ? 'pl' : x.m === 'shuf' ? 'shuf' : x.src === 'SoundCloud' ? 'sc' : x.src === 'Audius' ? 'au' : x.src === 'Internet Archive' ? 'ia' : 'bc';
 let recFold = new Set(readJSON('rw_recfold', []));
 const recFoldSave = () => safeSet('rw_recfold', JSON.stringify([...recFold]));
+// 1.44.0: drag a header's ⠿ to put the sections in your order; it syncs (settings) like the search sections order.
+const recSaved = () => { const o = readJSON('rw_recorder', null); return Array.isArray(o) ? o : null; };
+function recOrder() {
+  const o = recSaved(); if (!o) return REC_KINDS;
+  const known = o.map(k => REC_KINDS.find(x => x[0] === k)).filter(Boolean);
+  return [...known, ...REC_KINDS.filter(x => !o.includes(x[0]))];
+}
+let recDrag = null;
+function recDragStart(e, h) {
+  e.preventDefault();
+  const sec = h.closest('.recSec'), y0 = sec.getBoundingClientRect().top;
+  els.main.classList.add('recMoving');   // every section shrinks to its header while dragging
+  window.scrollBy(0, sec.getBoundingClientRect().top - y0);   // keep the grabbed header under the finger
+  const secs = [...els.main.querySelectorAll('.recSec')];
+  recDrag = { id: e.pointerId, sec, secs, from: secs.indexOf(sec), to: secs.indexOf(sec), y: e.clientY, mids: secs.map(x => { const r = x.getBoundingClientRect(); return r.top + r.height / 2; }), hgt: sec.getBoundingClientRect().height + 8 };
+  try { h.setPointerCapture(e.pointerId); } catch (err) {}
+  sec.classList.add('lift'); rwDragging = true;
+  try { if (e.pointerType === 'touch' && navigator.vibrate) navigator.vibrate(15); } catch (err) {}
+}
+function recDragMove(e) {
+  const d = recDrag; if (!d || e.pointerId !== d.id) return;
+  const dy = e.clientY - d.y, mid = d.mids[d.from] + dy;
+  let to = d.from;
+  while (to < d.secs.length - 1 && mid > d.mids[to + 1]) to++;
+  while (to > 0 && mid < d.mids[to - 1]) to--;
+  d.to = to;
+  d.sec.style.transform = 'translateY(' + dy + 'px)';
+  d.secs.forEach((x, i) => { if (x === d.sec) return; x.style.transform = (d.from < to && i > d.from && i <= to) ? 'translateY(' + -d.hgt + 'px)' : (d.from > to && i >= to && i < d.from) ? 'translateY(' + d.hgt + 'px)' : ''; });
+}
+function recDragEnd(drop) {
+  const d = recDrag; recDrag = null; if (!d) return;
+  rwDragging = false;
+  d.secs.forEach(x => { x.style.transform = ''; }); d.sec.classList.remove('lift');
+  els.main.classList.remove('recMoving');
+  if (drop && d.to !== d.from) {
+    const vis = d.secs.map(x => x.dataset.reck), k = vis.splice(d.from, 1)[0]; vis.splice(d.to, 0, k);
+    const full = recOrder().map(x => x[0]), slots = full.map((x, i) => vis.includes(x) ? i : -1).filter(i => i >= 0);
+    slots.forEach((slot, j) => { full[slot] = vis[j]; });
+    safeSet('rw_recorder', JSON.stringify(full));
+  }
+  render();
+}
 function recentView() {
   const groups = new Map();
   recent.forEach((x, ri) => { const k = recKind(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push([x, ri]); });
   if (heard.length) groups.set('songs', []);
-  const kinds = REC_KINDS.filter(([k]) => groups.has(k));
+  const kinds = recOrder().filter(([k]) => groups.has(k));
   if (!kinds.length) return '<div class="empty">Stations, albums and playlists you play show up here.</div>';
   const folded = kinds.filter(([k]) => recFold.has(k)).length;
   let h = '<div class="recTop">' + (folded < kinds.length ? '<button class="chip" id="recFoldAll">⊟ Fold all</button>' : '')
     + (folded ? '<button class="chip" id="recOpenAll">⊞ Open all</button>' : '')
+    + (recSaved() ? '<button class="chip" id="recReset" title="Back to the standard order">↺ Reset order</button>' : '')
     + (recent.length ? '<button class="chip" id="recentClear">🗑️ Clear recent</button>' : '') + '</div>';
   kinds.forEach(([k, label]) => {
     const rows = groups.get(k), shut = recFold.has(k), n = k === 'songs' ? heard.length : rows.length;
-    h += '<section class="recSec"><div class="recHead' + (shut ? ' shut' : '') + '"><button class="recFold" data-recfold="' + k + '" aria-expanded="' + !shut + '"><span class="recArrow">▾</span>' + label + ' <small>· ' + n + '</small></button>'
+    h += '<section class="recSec" data-reck="' + k + '"><div class="recHead' + (shut ? ' shut' : '') + '"><button class="iconBtn recDrag" data-recdrag="' + k + '" title="Drag to move this section">⠿</button><button class="recFold" data-recfold="' + k + '" aria-expanded="' + !shut + '"><span class="recArrow">▾</span>' + label + ' <small>· ' + n + '</small></button>'
       + (k === 'songs' ? '' : '<button class="iconBtn recClr" data-recclr="' + k + '" title="Clear ' + esc(label.replace(/^\S+ /, '')) + '">🗑️</button>') + '</div>';
     if (!shut) {
       if (k === 'songs') h += '<ul class="list"><li class="st" id="recentSongs" style="cursor:pointer"><div class="art" style="display:flex;align-items:center;justify-content:center;font-size:26px">🕰️</div>'
@@ -1288,6 +1336,13 @@ function recentWire() {
   els.main.querySelectorAll('[data-recfold]').forEach(b => b.onclick = () => { const k = b.dataset.recfold; recFold.has(k) ? recFold.delete(k) : recFold.add(k); recFoldSave(); render(); });
   const fa = $('recFoldAll'); if (fa) fa.onclick = () => { kinds.forEach(k => recFold.add(k)); recFoldSave(); render(); };
   const oa = $('recOpenAll'); if (oa) oa.onclick = () => { recFold.clear(); recFoldSave(); render(); };
+  const ro = $('recReset'); if (ro) ro.onclick = () => { safeSet('rw_recorder', ''); try { localStorage.removeItem('rw_recorder'); } catch (e) {} setTouch('rw_recorder'); render(); };
+  els.main.querySelectorAll('[data-recdrag]').forEach(h => {
+    h.onpointerdown = e => { if (e.button > 0) return; recDragStart(e, h); };
+    h.onpointermove = recDragMove;
+    h.onpointerup = () => recDragEnd(true);
+    h.onpointercancel = () => recDragEnd(false);
+  });
   els.main.querySelectorAll('[data-recclr]').forEach(b => b.onclick = () => {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again'; b.classList.add('sure'); setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '🗑️'; b.classList.remove('sure'); } }, 4000); return; }
     const k = b.dataset.recclr, out = recent.filter(x => recKind(x) === k);
@@ -2474,7 +2529,7 @@ function bcHeard() {
   const name = t.artist + ' – ' + t.title;
   if (!heard[0] || songKey(heard[0].song) !== songKey(name)) {
     heard.unshift({ song: name, station: trkSrc(t) + ' · ' + t.album, at: Date.now() });
-    heard = heard.slice(0, 200);
+    heard = heard.slice(0, 250);
     safeSet('rw_heard', JSON.stringify(heard));
   }
 }
@@ -3582,7 +3637,7 @@ function setSong(title, station, starts, ends, art) {
     diag('song: ' + title);
     if (!heard[0] || songKey(heard[0].song) !== songKey(title)) {
       heard.unshift({ song: title, station, at: Date.now() });
-      heard = heard.slice(0, 200);
+      heard = heard.slice(0, 250);
       safeSet('rw_heard', JSON.stringify(heard));
     }
     if (!art) findArt(title);
@@ -4614,7 +4669,7 @@ function unGarble(x) {
     },
   };
   // Settings: the newest change of each one wins (volume stays per device).
-  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order', rw_scsort: 'SoundCloud lists order', rw_bcsort: 'Bandcamp albums order' };
+  const SET_NAMES = { rw_palette: 'Theme color', rw_mode: 'Light or dark', rw_accent: 'Accent color', rw_srcs: 'Directories searched', rw_svcs: 'Music service tabs', rw_favsort: 'Favorites order', rw_time: 'Song time style', rw_picksort: 'Search pills order', rw_picksrev: 'Search pills reversed', rw_secorder: 'Search sections order', rw_scsort: 'SoundCloud lists order', rw_bcsort: 'Bandcamp albums order', rw_recorder: 'Recent sections order' };
   const setAt = () => readJSON('rw_set_at', {});
   K.settings = {
     file: 'settings', what: 'settings', count: () => Object.keys(setAt()).length,
