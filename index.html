@@ -395,6 +395,15 @@
   .findRow .clearWrap { flex: 1; min-width: 0; }
   .findRow select.sortSel { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .88rem; max-width: 150px; }
   .favHead select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .88rem; }
+  .recTop { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin: 10px 0 4px; }
+  .recSec { margin-top: 8px; }
+  .recHead { position: sticky; top: var(--topH, 0px); z-index: 3; display: flex; align-items: center; gap: 6px; background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); margin: 0 -4px 6px; padding: 4px; }
+  .recFold { flex: 1; display: flex; align-items: center; gap: 8px; background: none; border: 0; color: var(--accent); font: inherit; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; text-align: left; padding: 8px 2px; cursor: pointer; }
+  .recFold small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
+  .recArrow { display: inline-block; transition: transform .15s ease; }
+  .recHead.shut .recArrow { transform: rotate(-90deg); }
+  .recClr { font-size: .85rem; }
+  .recClr.sure { color: var(--accent); font-size: .75rem; white-space: nowrap; }
   .catHead { margin: 16px 2px 6px; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
   .catHead small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
   .plChoices { display: grid; gap: 6px; max-height: 40dvh; overflow: auto; }
@@ -612,7 +621,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.42.1';
+const VERSION = '1.43.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1245,6 +1254,49 @@ function recentMusicRow(x, ri) {
     + '<div class="srcs"><span class="tag">' + esc(x.src || '') + '</span></div></div></li>';
 }
 
+// 1.43.0: Recent in folding sections, one per kind, in a fixed order. Tap a header to fold it (remembered on this
+// device), Fold all / Open all on top, 🗑 on a header clears just that kind (tap twice). Headers stick under the player.
+const REC_KINDS = [['st', '📻 Stations'], ['pl', '📜 Playlists'], ['sc', '☁️ SoundCloud'], ['bc', '🎸 Bandcamp'], ['au', '🎧 Audius'], ['ia', '📚 Internet Archive'], ['shuf', '🔀 Shuffles'], ['songs', '🕰️ Songs played']];
+const recKind = x => !x.m ? 'st' : x.m === 'pl' ? 'pl' : x.m === 'shuf' ? 'shuf' : x.src === 'SoundCloud' ? 'sc' : x.src === 'Audius' ? 'au' : x.src === 'Internet Archive' ? 'ia' : 'bc';
+let recFold = new Set(readJSON('rw_recfold', []));
+const recFoldSave = () => safeSet('rw_recfold', JSON.stringify([...recFold]));
+function recentView() {
+  const groups = new Map();
+  recent.forEach((x, ri) => { const k = recKind(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push([x, ri]); });
+  if (heard.length) groups.set('songs', []);
+  const kinds = REC_KINDS.filter(([k]) => groups.has(k));
+  if (!kinds.length) return '<div class="empty">Stations, albums and playlists you play show up here.</div>';
+  const folded = kinds.filter(([k]) => recFold.has(k)).length;
+  let h = '<div class="recTop">' + (folded < kinds.length ? '<button class="chip" id="recFoldAll">⊟ Fold all</button>' : '')
+    + (folded ? '<button class="chip" id="recOpenAll">⊞ Open all</button>' : '')
+    + (recent.length ? '<button class="chip" id="recentClear">🗑️ Clear recent</button>' : '') + '</div>';
+  kinds.forEach(([k, label]) => {
+    const rows = groups.get(k), shut = recFold.has(k), n = k === 'songs' ? heard.length : rows.length;
+    h += '<section class="recSec"><div class="recHead' + (shut ? ' shut' : '') + '"><button class="recFold" data-recfold="' + k + '" aria-expanded="' + !shut + '"><span class="recArrow">▾</span>' + label + ' <small>· ' + n + '</small></button>'
+      + (k === 'songs' ? '' : '<button class="iconBtn recClr" data-recclr="' + k + '" title="Clear ' + esc(label.replace(/^\S+ /, '')) + '">🗑️</button>') + '</div>';
+    if (!shut) {
+      if (k === 'songs') h += '<ul class="list"><li class="st" id="recentSongs" style="cursor:pointer"><div class="art" style="display:flex;align-items:center;justify-content:center;font-size:26px">🕰️</div>'
+        + '<div class="body"><div class="name">Songs played</div><div class="meta">' + heard.length + ' song' + (heard.length === 1 ? '' : 's') + ', newest first</div></div><div style="align-self:center;font-size:22px;opacity:.6;padding:0 6px">›</div></li></ul>';
+      else h += '<ul class="list">' + rows.map(([x, ri]) => { if (x.m) return recentMusicRow(x, ri); listed.push(x); return stationRow(x, listed.length - 1); }).join('') + '</ul>';
+    }
+    h += '</section>';
+  });
+  return h;
+}
+function recentWire() {
+  const kinds = REC_KINDS.map(k => k[0]);
+  els.main.querySelectorAll('[data-recfold]').forEach(b => b.onclick = () => { const k = b.dataset.recfold; recFold.has(k) ? recFold.delete(k) : recFold.add(k); recFoldSave(); render(); });
+  const fa = $('recFoldAll'); if (fa) fa.onclick = () => { kinds.forEach(k => recFold.add(k)); recFoldSave(); render(); };
+  const oa = $('recOpenAll'); if (oa) oa.onclick = () => { recFold.clear(); recFoldSave(); render(); };
+  els.main.querySelectorAll('[data-recclr]').forEach(b => b.onclick = () => {
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again'; b.classList.add('sure'); setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '🗑️'; b.classList.remove('sure'); } }, 4000); return; }
+    const k = b.dataset.recclr, out = recent.filter(x => recKind(x) === k);
+    out.forEach(x => markGone('recent', x.key));
+    recent = recent.filter(x => recKind(x) !== k); safeSet('rw_recent', JSON.stringify(recent)); autoSave('recent'); render();
+    showNotice('Cleared ' + out.length + ' from Recent.');
+  });
+}
+
 // ── Showing it ──────────────────────────────────
 let tab = (() => { const t = safeGet('rw_tab'); return t && document.querySelector('.tab[data-tab="' + t + '"]') ? t : 'search'; })();   // reopens on the tab you were on
 function setTabs() { document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); }
@@ -1322,7 +1374,7 @@ function stationRow(st, i, g) {
   const meta = [st.country, st.tags.slice(0, 3).join(', ')].filter(Boolean).join(' · ');
   const names = [...new Set(st.srcs.map(s => SRC[s.src] ? SRC[s.src].name : s.src))];
   const check = st.check === 'ok' ? '<span class="tag ok">✓ plays</span>' : st.check === 'dead' ? '<span class="tag bad">no answer</span>' : (st.check === 'checking' || st.check === 'wait') ? '<span class="tag">testing…</span>' : '';
-  const now = current && vars.some(v => v.key === current.key);
+  const now = !bc && current && vars.some(v => v.key === current.key);   // a song playing = no station glows (the one before used to keep its ring)
   const qs = vars.some(v => v.codec || kbps(v)) ? '<div class="qs">' + vars.map(v => {
     const vi = v === st ? i : (listed.push(v), listed.length - 1);
     return '<button class="q' + (current && current.key === v.key ? ' on' : '') + '" data-q="' + vi + '" title="Play this quality">' + esc(qLabel(v)) + '</button>';
@@ -1487,16 +1539,11 @@ function render() {
   } else if (tab === 'favs') {
     h += favView();
   } else {
-    const list = recent;
-    // Every song that played (the same list as 👍 → 🕰️ Recently played), one tap away; Recent itself keeps what you started.
-    if (heard.length) h += '<ul class="list" style="margin-top:12px"><li class="st" id="recentSongs" style="cursor:pointer"><div class="art" style="display:flex;align-items:center;justify-content:center;font-size:26px">🕰️</div>'
-      + '<div class="body"><div class="name">Songs played</div><div class="meta">' + heard.length + ' song' + (heard.length === 1 ? '' : 's') + ', newest first</div></div><div style="align-self:center;font-size:22px;opacity:.6;padding:0 6px">›</div></li></ul>';
-    if (!list.length) h += '<div class="empty">Stations, albums and playlists you play show up here.</div>';
-    else h += '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="chip" id="recentClear">🗑️ Clear recent</button></div>';
-    h += '<ul class="list" style="margin-top:12px">' + list.map((st, ri) => { if (st.m) return recentMusicRow(st, ri); listed.push(st); return stationRow(st, listed.length - 1); }).join('') + '</ul>';
+    h += recentView();
   }
   els.main.innerHTML = h;
   requestAnimationFrame(() => els.main.querySelectorAll('.st.now .name').forEach(fitMq));
+  if (tab === 'recent') recentWire();
   const rc = $('recentClear');
   if (rc) rc.onclick = () => {
     if (!rc.dataset.sure) { rc.dataset.sure = '1'; rc.textContent = 'Tap again to clear'; setTimeout(() => { if (rc.isConnected) { delete rc.dataset.sure; rc.textContent = '🗑️ Clear recent'; } }, 4000); return; }
