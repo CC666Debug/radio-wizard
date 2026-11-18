@@ -634,7 +634,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.45.0';
+const VERSION = '1.45.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -2039,7 +2039,7 @@ function speakerHasLast() {
 }
 function adoptSpeakerMusic() {
   if (bc) return;
-  const cid = player.mediaInfo.contentId, qt = castQ().find(x => x.url === cid);
+  const cid = player.mediaInfo.contentId, cq = castQ(), qi = cq.findIndex(x => x.url === cid), qt = qi >= 0 ? cq[qi] : null;
   let m = readJSON('rw_cast_m', null) || { url: cid, at: Date.now() };
   if (m.url !== cid) m = { url: cid, at: Date.now() };   // moved on in its queue while RW was closed: the song's place in time isn't known, so the clock starts here
   let L = lastPlay;
@@ -2048,6 +2048,8 @@ function adoptSpeakerMusic() {
   const t = Object.assign({}, L.t, { url: m.url, art: L.art || L.t.art, exp: Date.now() + 3600e3 });
   speakerStation = null; songWatchFor = null; songStop();
   bc = { queue: [t], i: 0, shuffle: false, where: 'speaker', state: 'playing', rkey: L.key, sent: m.url };
+  // 1.45.0: the songs RW had already handed the speaker after this one (its queue), so Up next and following it stay right
+  bc.spkAhead = qi >= 0 ? cq.slice(qi + 1) : [];
   bcClock.start = 0; bcClock.pos = Math.max(0, (Date.now() - m.at) / 1000); bcClock.paused = false; bcClockPlaying();
   diag('speaker is still playing ' + t.title + ': picked it back up');
   safeSet('rw_cast_m', JSON.stringify(m));
@@ -2058,7 +2060,11 @@ async function bcRefill(L) {
   const b = bc;
   const pl = L.pl && pls.find(p => p.id === L.pl.id);
   if (pl) { plCtx = { id: pl.id, order: (L.pl.order || []).filter(i => i < pl.items.length), i: L.pl.i || 0 }; return; }
-  if (L.shuf) { b.shuffle = true; b.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack; scTopUp(b); return; }
+  if (L.shuf) {
+    b.shuffle = true; b.pick = L.shuf === 'sc' ? scRandomTrack : bcRandomTrack;
+    if (b.spkAhead && b.spkAhead.length) { b.queue.push(...b.spkAhead); b.queued = b.spkAhead.length; b.spkAhead.forEach(t => shufDone.add('sc' + t.sc)); }
+    scTopUp(b); return;
+  }
   const x = L.key && recent.find(r => r.key === L.key && r.m === 'list' && r.ref);
   if (!x) return;
   let list = [];
@@ -2070,6 +2076,8 @@ async function bcRefill(L) {
   const i = list.findIndex(y => L.t.sc ? y.sc === L.t.sc : (y.n === L.t.n && y.title === L.t.title));
   if (i < 0) return;
   list[i] = b.queue[0]; b.queue = list; b.i = i;
+  const ah = b.spkAhead || [], same = (a, c) => a.sc ? a.sc === c.sc : a.n === c.n && a.title === c.title;
+  if (ah.length && ah.every((t, k) => list[i + 1 + k] && same(t, list[i + 1 + k]))) { list.splice(i + 1, ah.length, ...ah); b.queued = i + ah.length; }   // the speaker's queued links, so RW follows it
   diag('picked back up: song ' + (i + 1) + ' of ' + list.length + ' in ' + x.name);
 }
 function onSpeakerState() {
