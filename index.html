@@ -621,7 +621,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.43.0';
+const VERSION = '1.43.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1177,7 +1177,7 @@ function recentMusic(queue, i) {
   const act = recentAct; recentAct = null;
   const src = trkSrc(t);
   if (act) {
-    addRecentEntry({ m: 'shuf', key: 'm|shuf|' + act, act, name: act === 'sc' ? 'Shuffle my SoundCloud likes' : 'Shuffle my Bandcamp collection', sub: 'Shuffle', src, art: t.art || '' });
+    addRecentEntry({ m: 'shuf', key: 'm|shuf|' + act, act, name: act === 'sc' ? 'Shuffle my SoundCloud playlists' : 'Shuffle my Bandcamp collection', sub: 'Shuffle', src, art: t.art || '' });
     if (bc) bc.rkey = 'm|shuf|' + act;
     return;
   }
@@ -1250,7 +1250,7 @@ async function playRecentMusic(x, opt) {
 function recentMusicRow(x, ri) {
   const now = x.m === 'pl' ? !!(plCtx && plCtx.id === x.plId) : !!(bc && !plCtx && bc.rkey === x.key);
   return '<li class="st' + (now ? ' now' : '') + '" data-recm="' + ri + '"><img class="art" loading="lazy" alt="" src="' + esc(x.art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'">'
-    + '<div class="body"><div class="name">' + esc(x.name) + '</div><div class="meta">' + esc(x.sub || ' ') + '</div>'
+    + '<div class="body"><div class="name">' + esc(x.key === 'm|shuf|sc' ? 'Shuffle my SoundCloud playlists' : x.name) + '</div><div class="meta">' + esc(x.sub || ' ') + '</div>'
     + '<div class="srcs"><span class="tag">' + esc(x.src || '') + '</span></div></div></li>';
 }
 
@@ -2868,9 +2868,10 @@ function scCount() {
   const songs = scItems.reduce((n, x) => n + (x.kind === 'pl' ? x.count || 0 : (x.tracks || []).length), 0);
   return songs + ' song' + (songs === 1 ? '' : 's') + ' in ' + scItems.length + ' list' + (scItems.length === 1 ? '' : 's');
 }
-function scSongs() {
+function scSongs(onlyPl) {   // onlyPl: just the songs in your playlists (Shuffle playlists), not likes / uploads
   const all = [];
   scItems.forEach(x => {
+    if (onlyPl && x.kind !== 'pl') return;
     if (x.tracks) { x.tracks.forEach(t => all.push(t)); return; }
     const ix = scIdx && scIdx.lists[x.id];
     if (ix) ix.t.forEach((a, i) => all.push({ sc: a[0], n: i + 1, title: a[1], artist: a[2], dur: a[3], art: a[4], album: x.title, au: 'sc:' + x.id, url: null, off: !!(a[5] & 1), preview: !!(a[5] & 2) }));
@@ -2965,7 +2966,7 @@ function scView() {
         + '<div class="hint" style="margin-top:0">Type your name to load what your profile shows, or sign in to also get private likes and playlists (and full songs with Go+). Your password goes to SoundCloud’s own page and stays on this device.</div>' : '') + '</div>';
   }
   h += '<div class="bcHead"><div class="who"><b>' + esc(scUser || 'SoundCloud') + '</b>' + (scSignedIn ? ' ✓' : '') + ' · ' + (scBusy ? esc(scBusy) : scCount()) + '</div>'
-    + '<button class="btn main" id="scShufAll">🔀 Shuffle likes</button><button class="btn" id="scMenu">⋯</button></div>';
+    + '<button class="btn main" id="scShufAll">🔀 Shuffle playlists</button><button class="btn" id="scMenu">⋯</button></div>';
   h += '<div class="findRow"><div class="clearWrap"><input class="field" id="scFilter" placeholder="Find a song, playlist or artist" value="' + esc(scFilter) + '" autocomplete="off">'
     + '<button type="button" class="clearX" id="scFilterX" title="Clear"' + (scFilter ? '' : ' hidden') + '>✕</button></div>' + sortSelect('scSort', scSort) + '</div>';
   h += '<ul class="list" id="scList" style="margin-top:10px">' + scListHtml() + '</ul>';
@@ -3069,13 +3070,13 @@ function shufPick(pool, id) {
 async function scRandomTrack() {
   if (!scIdx) { try { scIdx = await kv('readonly', st => st.get('sc_idx')); } catch (e) {} }
   if (!scIdxRun) scIndex();   // reads any playlists not indexed yet, in the background
-  const seen = new Set(), pool = scSongs().filter(t => scPlayable(t) && !seen.has(t.sc) && seen.add(t.sc));
+  const seen = new Set(), pool = scSongs(true).filter(t => scPlayable(t) && !seen.has(t.sc) && seen.add(t.sc));
   const t = shufPick(pool, x => 'sc' + x.sc);
   return t ? Object.assign({}, t) : null;
 }
 async function scShuffleAll() {
   const t = await scRandomTrack();
-  if (!t) { showNotice('No SoundCloud songs to shuffle yet.'); return; }
+  if (!t) { showNotice('No songs in your SoundCloud playlists to shuffle yet.'); return; }
   recentAct = 'sc';
   bcStart([t], 0, true);
   if (bc) bc.pick = scRandomTrack;
