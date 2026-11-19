@@ -235,7 +235,7 @@
   header.top.mini .castBtn span { display: none; }
   header.top.mini .castBtn svg { width: 24px; height: 24px; }
   header.top.mini .searchRow, header.top.mini .tabs, header.top.mini .volRow, header.top.mini #npState, header.top.mini #where,
-  header.top.mini #shufBtn, header.top.mini #prevBtn, header.top.mini #muteBtn, header.top.mini #addBtn, header.top.mini .pTime { display: none !important; }
+  header.top.mini #shufBtn, header.top.mini #prevBtn, header.top.mini #addBtn, header.top.mini .pTime { display: none !important; }
   header.top.mini .player { position: relative; display: flex; align-items: center; gap: 6px; padding: 7px 5px 7px 7px; border-radius: 12px; overflow: hidden; margin-top: 6px; }
   header.top.mini .now { flex: 1; min-width: 0; gap: 10px; cursor: pointer; }
   header.top.mini .player .art { width: 42px; height: 42px; border-radius: 9px; }
@@ -252,6 +252,10 @@
   header.top.mini .play svg { width: 21px; height: 21px; }
   header.top.mini .player .heart { font-size: 1.5rem; padding: 4px; }
   header.top.mini .player .row .iconBtn { padding: 6px; }
+  /* Volume stays in the mini player: smaller speaker + %, same hold-and-slide / wheel / tap-to-mute. */
+  header.top.mini #muteBtn { padding: 4px 2px 4px 4px; gap: 2px; }
+  header.top.mini #muteBtn svg { width: 23px; height: 19px; }
+  header.top.mini .volnum { font-size: .76rem; min-width: 2.5em; }
   header.top.mini .prog { position: absolute; left: 0; right: 0; bottom: 0; gap: 0; }
   header.top.mini .pTrack { height: 2px; border-radius: 0; background: transparent; }
   html { overflow-anchor: none; }
@@ -264,6 +268,7 @@
   header.top.vt #npSub { view-transition-name: mini-song; }
   header.top.vt #playBtn { view-transition-name: mini-play; }
   header.top.vt #nextBtn { view-transition-name: mini-next; }
+  header.top.vt #muteBtn { view-transition-name: mini-vol; }
   /* The page under the bar slides by exactly the amount the player shrinks, on the same curve, so the list stays
      glued to the player's bottom edge the whole way (the top station never slips out of sight). */
   ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; animation-duration: .34s; animation-timing-function: cubic-bezier(.25, .8, .25, 1); }
@@ -634,7 +639,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.45.1';
+const VERSION = '1.46.0';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -4112,7 +4117,7 @@ function plView() {
     const songs = p.items.filter(it => it.k === 'bc').length, sts = p.items.length - songs;
     return '<li class="st" data-plopen="' + i + '"><img class="art" alt="" src="' + esc(art || 'icon-192.png') + '" onerror="this.onerror=null;this.src=\'icon-192.png\'"><div class="body"><div class="name">' + esc(p.name)
       + '</div><div class="meta">' + [songs ? songs + ' song' + (songs === 1 ? '' : 's') : '', sts ? sts + ' station' + (sts === 1 ? '' : 's') : ''].filter(Boolean).join(' · ') + '</div></div>'
-      + '<button class="iconBtn" data-plplay="' + i + '" title="Play" style="font-size:1.3rem">▶</button><button class="iconBtn dragH" data-drag="' + i + '" title="Drag to move">⠿</button></li>';
+      + '<button class="iconBtn" data-plshuf="' + i + '" title="Shuffle"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button><button class="iconBtn" data-plplay="' + i + '" title="Play" style="font-size:1.3rem">▶</button><button class="iconBtn dragH" data-drag="' + i + '" title="Drag to move">⠿</button></li>';
   }).join('') + '</ul>';
   return h;
 }
@@ -4151,6 +4156,8 @@ els.main.addEventListener('click', e => {
   if (e.target.closest('[data-drag]')) { e.stopPropagation(); return; }
   const open = e.target.closest('[data-plopen]'), playB = e.target.closest('[data-plplay]');
   if (playB) { e.stopPropagation(); playPlaylist(pls[+playB.dataset.plplay], 0, false); return; }
+  const shufB = e.target.closest('[data-plshuf]');
+  if (shufB) { e.stopPropagation(); playPlaylist(pls[+shufB.dataset.plshuf], 0, true); return; }
   if (open) { plOpen = pls[+open.dataset.plopen].id; render(); window.scrollTo(0, 0); return; }
   const pl = plOpen && pls.find(p => p.id === plOpen);
   if (!pl) return;
