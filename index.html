@@ -69,7 +69,7 @@
   .logo { width: 38px; height: 38px; border-radius: 10px; flex: none; }
   h1 {
     margin: 0; flex: 1 1 auto; min-width: 0; white-space: nowrap; font: 700 clamp(.8rem, 4.6vw, 1.35rem)/1 "Cinzel Decorative", Georgia, serif; letter-spacing: .5px;
-    background: linear-gradient(90deg, var(--gold), var(--accent) 55%, var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, var(--text)), var(--accent) 55%, var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .castBtn {
     display: flex; align-items: center; gap: 6px; max-width: 46%; flex: 0 1 auto;
@@ -639,7 +639,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.46.0';
+const VERSION = '1.46.1';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
