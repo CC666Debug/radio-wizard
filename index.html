@@ -639,7 +639,7 @@
 
 <script>
 'use strict';
-const VERSION = '1.46.2';
+const VERSION = '1.46.3';
 // The player's height, so ‹ Back rows can stay right under it.
 (() => {
   const top = document.querySelector('header.top');
@@ -1929,7 +1929,7 @@ window.__onGCastApiAvailable = function (available) {
   player = new cast.framework.RemotePlayer();
   ctrl = new cast.framework.RemotePlayerController(player);
   ctrl.addEventListener(cast.framework.RemotePlayerEventType.ANY_CHANGE, () => { bcQueueSync(); onSpeakerState(); renderBar(); });
-  ctx.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, e => { diag('cast state: ' + e.castState); renderBar(); });
+  ctx.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, e => { diag('cast state: ' + e.castState); if (e.castState === 'NO_DEVICES_AVAILABLE') { noDevAt = Date.now(); if (dropResume && noDevAt - dropResume.at < 15000) dropResume.gone = true; } renderBar(); });
   ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, e => {
     const S = cast.framework.SessionState;
     diag('session: ' + e.sessionState + (e.errorCode ? ' · error ' + e.errorCode : '') + (e.session ? ' · ' + e.session.getCastDevice().friendlyName : ''));
@@ -2034,10 +2034,15 @@ function castQAdd(t, fresh) {
 }
 // The speaker is playing the station RW last sent (not just whatever station was picked last, maybe days ago).
 // 1.46.2 (11-27 log: Reverend vanished at 00:57, back 02:32; the group stops when it drops, so rejoining alone = silence)
-let dropResume = null;
+let dropResume = null, noDevAt = 0;
+// Only when the speakers really vanished from the network at the drop (both 11-27 drops: "no devices" within
+// a second). A stop from Google Home / "Hey Google, stop" can end the cast too, but the speaker stays visible,
+// and that must never turn the music back on.
+const droppedOff = d => d.gone || d.at - noDevAt < 15000;
 function resumeAfterDrop() {
   const d = dropResume; dropResume = null;
   if (!d || Date.now() - d.at > 3 * 3600e3) return;
+  if (!droppedOff(d)) { diag('rejoined: the speaker never left the network (stopped on purpose?), not restarting'); return; }
   setTimeout(() => {
     if (!ctx || !ctx.getCurrentSession() || !player) return;
     const ps = player.playerState;
